@@ -1,0 +1,13 @@
+target/
+.quarkus/
+.idea/
+*.iml
+*.log
+address-cache.json
+.env
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+node_modules/
