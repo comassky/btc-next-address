@@ -1,5 +1,5 @@
 ## Stage 1 : Build with GraalVM
-FROM quay.io/quarkus/ubi-quarkus-mandrel-builder-image:23.1-jdk21 AS build
+FROM quay.io/quarkus/ubi-quarkus-mandrel-builder-image:jdk-21 AS build
 COPY --chown=quarkus:quarkus mvnw /code/mvnw
 COPY --chown=quarkus:quarkus .mvn /code/.mvn
 COPY --chown=quarkus:quarkus pom.xml /code/
