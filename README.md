@@ -1,176 +1,115 @@
-# Bitcoin Next Address - BIP84 Explorer
+# Bitcoin Next Address - BIP84
 
-Une application Quarkus pour trouver la prochaine adresse Bitcoin BIP84 non utilisée à partir d'une clé publique étendue (zpub).
+A Quarkus application to find the next unused Bitcoin BIP84 address from an extended public key (xpub/zpub).
 
-## Fonctionnalités
+The application provides a simple web interface to display the address and its QR code, as well as a REST API.
 
-- ✅ Dérivation BIP84 des adresses Bitcoin
-- ✅ Vérification d'utilisation des adresses via blockchain
-- ✅ Cache JSON pour les adresses déjà testées
-- ✅ API REST simple
-- ✅ Interface web avec QR codes
-- ✅ Support de la recherche optimisée avec sel personnalisé
+## Features
 
-## Architecture
+- ✅ **BIP84 (Native SegWit)** Bitcoin address derivation.
+- ✅ **Backend QR code generation** for a lightweight client interface.
+- ✅ Address usage verification via an external blockchain API.
+- ✅ **Persistent cache** for already checked addresses to minimize API calls.
+- ✅ Simple REST API and intuitive web interface.
+- ✅ Built as a **native executable** using GraalVM for fast startup and low memory footprint.
+- ✅ **Docker-ready** for deployment.
 
+## Tech Stack
+
+- **Backend**: Java 21 (LTS), Quarkus
+- **QR Code Generation**: ZXing (Zebra Crossing)
+- **Bitcoin**: BitcoinJ
+- **Build**: Maven, GraalVM
+
+## Configuration
+
+The configuration file is located at `src/main/resources/application.properties`.
+
+- `bitcoin.xpub`: Your extended public key (xpub or zpub). **It is strongly recommended to set this via an environment variable.**
+- `bitcoin.network`: The Bitcoin network to use (`mainnet` or `testnet`).
+- `bitcoin.cache.path`: The **directory** where the cache file (`address-cache.json`) will be stored.
+
+Example of setting the xpub via an environment variable:
+```bash
+export BITCOIN_XPUB="xpub6CgocZ..."
 ```
-src/
-├── main/
-│   ├── java/com/btc/address/
-│   │   ├── bitcoin/        # Logique BIP84
-│   │   ├── blockchain/     # Vérification adresses
-│   │   ├── cache/          # Gestion cache JSON
-│   │   ├── service/        # Service métier
-│   │   ├── resource/       # API REST
-│   │   └── AddressApplication.java
-│   └── resources/
-│       ├── application.properties
-│       └── META-INF/resources/
-│           └── index.html  # Interface web
-└── test/                   # Tests unitaires
+
+## Running the Application
+
+### Development Mode
+To run the application in development mode with hot-reload:
+```bash
+./mvnw quarkus:dev
+```
+The application will be available at `http://localhost:8080`.
+
+### Native Build & Docker
+
+This application is designed to be run as a native executable inside a Docker container.
+
+**1. Build the Docker Image:**
+
+The provided `Dockerfile` uses a multi-stage approach to build the native executable and then copies it into a minimal runtime image.
+```bash
+docker build -t quarkus/next-address .
 ```
 
-## Prérequis
+**2. Run the Container:**
 
-- Java 17+
-- Maven 3.8.1+
-
-## Compilation
+To ensure cache persistence across restarts, it is crucial to mount a volume to the container's cache directory.
 
 ```bash
-mvn clean package
+# Create a local directory for the cache
+mkdir -p ./btc-cache
+
+# Run the container with the volume mount
+docker run -i --rm \
+  -p 8080:8080 \
+  -v ./btc-cache:/work/cache \
+  -e BITCOIN_XPUB="your_xpub_here" \
+  quarkus/next-address
 ```
+- `-v ./btc-cache:/work/cache`: Mounts the local `./btc-cache` directory to the `/work/cache` directory inside the container.
+- `-e BITCOIN_XPUB="..."`: Securely sets your xpub.
 
-## Exécution
+## REST API
 
-### Mode développement
-```bash
-mvn quarkus:dev
-```
+### Main Endpoint
 
-### Mode production
-```bash
-java -jar target/quarkus-app/quarkus-run.jar
-```
-
-L'application sera accessible à: `http://localhost:8080`
-
-## API REST
-
-### Endpoint Principal
+Finds the next unused address.
 ```
 POST /api/address/next
 Content-Type: application/json
 
+// The request body can be empty or specify a starting index
 {
-  "zpub": "zpub1234...",
-  "startIndex": 0,
-  "salt": "votre-sel-optionnel"
+  "startIndex": 0 
 }
 
-Response:
+// Response
 {
   "address": "bc1q...",
-  "publicKey": "...",
-  "index": 5,
-  "salt": "...",
-  "hash": "..."
+  "index": 42,
+  "qrCodeImage": "data:image/png;base64,iVBORw0KGgo..."
 }
 ```
 
 ### Health Check
+Checks if the service is configured and ready.
 ```
 GET /api/address/health
 
-Response:
+// Response
 {
-  "status": "Address service is running"
+  "status": "Address service is ready"
 }
 ```
 
-## Cache
+## Security
 
-Les adresses testées sont sauvegardées dans `address-cache.json` à la racine du projet:
-
-```json
-{
-  "hash1": {
-    "hash": "abc123...",
-    "salt": "salt123...",
-    "used": false,
-    "timestamp": 1707477600000
-  }
-}
-```
-
-## Configuration
-
-Éditez `src/main/resources/application.properties`:
-
-```properties
-quarkus.application.name=next-address
-quarkus.http.port=8080
-bitcoin.cache.file=address-cache.json
-bitcoin.network=mainnet
-```
-
-## Vérification des Adresses
-
-L'application utilise l'API Blockchair pour vérifier si une adresse a des transactions. 
-Alternative: Blockchain.com API.
-
-⚠️ **Note**: Les API publiques ont des limites de débit. Utilisez un API key personnel pour la production.
-
-## Utilisation Web
-
-1. Accédez à `http://localhost:8080`
-2. Collez votre ZPUB
-3. Définissez un index de départ (optionnel)
-4. Cliquez sur "Find Address"
-5. L'adresse et le QR code s'affichent
-6. Scannez le QR code ou copiez l'adresse
-
-## Notes Importantes
-
-- **BIP84 Path**: `m/84'/0'/0'/0/{index}` pour adresses externes (testnet: `m/84'/1'/0'/0/{index}`)
-- **Hash**: SHA-256(address + salt) pour identification robuste
-- **Cache**: Évite les requêtes répétées à la blockchain
-- **Réseau**: Configuré pour mainnet Bitcoin
-
-## Sécurité
-
-- Les clés privées ne sont JAMAIS traitées
-- Seules les clés publiques étendues (zpub) sont utilisées
-- Le cache stocke uniquement les hash, pas les adresses brutes
-- Salt aléatoire pour chaque recherche
-
-## Troubleshooting
-
-### "Invalid zpub"
-- Vérifiez que le zpub commence par `zpub` ou `xpub`
-- Assurez-vous que c'est une clé pour le mainnet
-
-### Adresses non trouvées
-- Augmentez `maxAttempts` dans `AddressService.java`
-- Vérifiez la connexion internet et l'API blockchain
-- Consultez les logs de la console
-
-### Erreurs de rate limiting
-- Attendez quelques minutes
-- Considérez l'utilisation d'une API key personnelle
-
-## Développement
-
-```bash
-# Dev avec hot reload
-mvn quarkus:dev
-
-# Tests
-mvn test
-
-# Build optimisé
-mvn package -DskipTests
-```
+- **No private keys are ever used or required.** The application operates solely with extended public keys (xpub).
+- The cache only stores address hashes, not the addresses themselves.
+- It is recommended to provide the `BITCOIN_XPUB` via an environment variable rather than hardcoding it in `application.properties`.
 
 ## License
 
