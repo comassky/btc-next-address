@@ -1,4 +1,4 @@
-name: Build and Push Native Docker Image
+name: Build and Push Native Image
 
 on:
   push:
@@ -10,18 +10,66 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  JAVA_VERSION: '21'
 
 jobs:
-  build-and-push:
-    name: Build and Push Image
+  build-native:
+    name: Build Native Executable with Maven
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write # Needed to push to ghcr.io
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set up GraalVM
+        uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache Maven packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2
+
+      - name: Grant execute permission for mvnw
+        run: chmod +x ./mvnw
+
+      - name: Build Native Image
+        run: ./mvnw package -Dnative -DskipTests
+
+      - name: Upload Native Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-executable
+          path: target/*-runner
+          retention-days: 1
+
+  build-and-push-image:
+    name: Build and Push Docker Image
+    needs: build-native
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download native executable
+        uses: actions/download-artifact@v4
+        with:
+          name: native-executable
+          path: target/
+
+      - name: Grant execute permission for downloaded artifact
+        run: chmod +x target/*-runner
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -47,7 +95,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile # We use the multi-stage Dockerfile directly
+          file: ./src/main/docker/Dockerfile.native
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
