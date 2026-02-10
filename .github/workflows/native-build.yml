@@ -20,10 +20,7 @@ jobs:
       packages: write
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # Libération massive d'espace disque (Indispensable pour le build natif)
+      # ÉTAPE 1 : On fait de la place d'abord
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
         with:
@@ -36,12 +33,16 @@ jobs:
           remove-docker-images: 'true'
           swap-size-mb: 2048
 
-      # Étape de diagnostic pour confirmer la présence du Dockerfile
+      # ÉTAPE 2 : On télécharge le code APRÈS le nettoyage
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ÉTAPE 3 : Vérification (tu devrais voir ton pom.xml et Dockerfile ici)
       - name: Verify files presence
         run: |
-          echo "Contenu de la racine :"
+          echo "Contenu de la racine après checkout :"
           ls -F
-          if [ -f "Dockerfile" ]; then echo "✅ Dockerfile trouvé à la racine"; else echo "❌ Dockerfile MANQUANT"; exit 1; fi
+          if [ -f "Dockerfile" ]; then echo "✅ Dockerfile trouvé"; else echo "❌ Dockerfile toujours introuvable"; exit 1; fi
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
