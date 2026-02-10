@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -7,7 +7,6 @@
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 
     <script>
@@ -30,13 +29,11 @@
     </script>
     
     <style>
-        /* Force le SVG envoyé par le backend à être responsive */
         #qr-target svg {
             width: 100% !important;
             height: 100% !important;
             display: block;
         }
-        /* Supprime le highlight gris au toucher sur mobile */
         * { -webkit-tap-highlight-color: transparent; }
     </style>
 </head>
@@ -44,53 +41,48 @@
 <body class="bg-dark text-white font-sans min-h-screen flex items-center justify-center p-4">
 
     <div class="bg-card w-full max-w-md rounded-[2.5rem] p-8 border border-border shadow-2xl relative overflow-hidden">
-        <div class="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-btc to-orange-300"></div>
+        <div class="absolute top-0 left-0 right-0 h-1.5 bg-btc"></div>
 
         <div class="text-center mb-8">
             <div class="inline-flex items-center justify-center w-14 h-14 bg-btc/10 rounded-2xl mb-4">
                 <i data-lucide="bitcoin" class="text-btc w-8 h-8"></i>
             </div>
-            <h1 class="text-2xl font-bold tracking-tight">Recevoir</h1>
+            <h1 class="text-2xl font-bold tracking-tight">Receive Bitcoin</h1>
             <p class="text-gray-400 text-sm mt-1 uppercase tracking-widest font-semibold text-[10px]">Native SegWit • BIP84</p>
         </div>
 
         <div id="loader" class="space-y-6">
             <div class="mx-auto w-60 h-60 bg-white/5 rounded-[2rem] animate-pulse"></div>
             <div class="h-24 bg-white/5 rounded-2xl animate-pulse"></div>
-            <div class="h-14 bg-white/5 rounded-2xl animate-pulse"></div>
         </div>
 
-        <div id="main-content" class="hidden opacity-0 transition-opacity duration-500">
+        <div id="main-content" class="hidden opacity-0 transition-opacity duration-300">
             
             <div class="flex justify-center mb-8">
                 <div class="bg-white p-5 rounded-[2.5rem] shadow-2xl shadow-black/50 w-64 h-64 flex items-center justify-center overflow-hidden">
-                    <div id="qr-target" class="w-full h-full">
-                        </div>
+                    <div id="qr-target" class="w-full h-full"></div>
                 </div>
             </div>
 
-            <div class="bg-black/40 border border-border rounded-2xl p-4 mb-6 transition-all active:border-btc/50 cursor-pointer" onclick="copyAddress()">
+            <button onclick="copyAddress()" class="w-full text-left bg-black/40 border border-border rounded-2xl p-5 transition-all hover:bg-black/60 active:border-btc group outline-none">
                 <div class="flex justify-between items-center mb-3">
-                    <span class="text-[10px] uppercase font-bold tracking-widest text-gray-500">Adresse de dépôt</span>
+                    <span class="text-[10px] uppercase font-bold tracking-widest text-gray-500">Deposit Address (Click to copy)</span>
                     <span class="text-[10px] bg-btc/10 px-2 py-0.5 rounded-full text-btc font-bold">Index <span id="idx">0</span></span>
                 </div>
-                <div id="addr-text" class="font-mono text-[13px] text-gray-200 break-all leading-relaxed tracking-tight">
-                    ...
+                <div class="flex items-start gap-3">
+                    <div id="addr-text" class="font-mono text-[13px] text-gray-200 break-all leading-relaxed tracking-tight flex-1">
+                        ...
+                    </div>
+                    <i data-lucide="copy" id="copy-icon" class="w-4 h-4 text-gray-500 mt-1 group-hover:text-btc transition-colors"></i>
                 </div>
-            </div>
-
-            <div class="grid grid-cols-1 gap-3">
-                <button onclick="copyAddress()" id="copyBtn" 
-                    class="w-full h-14 bg-btc hover:bg-orange-500 active:scale-[0.97] transition-all rounded-2xl font-bold flex items-center justify-center gap-3 text-white shadow-lg shadow-btc/20">
-                    <i data-lucide="copy" class="w-5 h-5"></i>
-                    <span>Copier l'adresse</span>
-                </button>
-            </div>
+                <div id="copy-status" class="hidden text-green-500 text-[10px] font-bold mt-2 uppercase tracking-widest">
+                    Address copied to clipboard
+                </div>
+            </button>
         </div>
     </div>
 
     <script>
-        // Initialisation des icônes Lucide
         lucide.createIcons();
         let currentAddr = "";
 
@@ -102,18 +94,13 @@
                     body: JSON.stringify({ startIndex: 0 })
                 });
 
-                if (!response.ok) throw new Error('Erreur réseau');
+                if (!response.ok) throw new Error('Network error');
                 
                 const data = await response.json();
                 render(data.address, data.index, data.qrCodeImage);
             } catch (error) {
-                console.error("Erreur API:", error);
-                // Simulation pour test visuel si l'API est absente
-                render(
-                    "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh", 
-                    0, 
-                    `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><rect width="100" height="100" fill="white"/><path d="M10 10h20v20H10zm40 0h20v20H50zM10 50h20v20H10zm40 40h20v20H50z" fill="black"/></svg>`
-                );
+                console.error("API Error:", error);
+                // No fallback data rendered here anymore
             }
         }
 
@@ -123,15 +110,12 @@
             document.getElementById('idx').innerText = index;
             
             const target = document.getElementById('qr-target');
-            
-            // On vérifie si c'est un SVG brut ou une URL/Base64
             if (qrContent.trim().startsWith('<svg')) {
                 target.innerHTML = qrContent;
             } else {
                 target.innerHTML = `<img src="${qrContent}" class="w-full h-full object-contain">`;
             }
 
-            // Transition fluide entre loader et contenu
             document.getElementById('loader').classList.add('hidden');
             const content = document.getElementById('main-content');
             content.classList.remove('hidden');
@@ -142,31 +126,19 @@
             if (!currentAddr) return;
             
             navigator.clipboard.writeText(currentAddr).then(() => {
-                const btn = document.getElementById('copyBtn');
-                const originalHtml = btn.innerHTML;
-
-                // Animation Confetti
-                confetti({
-                    particleCount: 100,
-                    spread: 70,
-                    origin: { y: 0.8 },
-                    colors: ['#f7931a', '#ffffff', '#10b981']
-                });
-
-                // Feedback visuel bouton
-                btn.classList.replace('bg-btc', 'bg-green-500');
-                btn.innerHTML = `<i data-lucide="check" class="w-5 h-5"></i> <span>Copié !</span>`;
-                lucide.createIcons();
+                const status = document.getElementById('copy-status');
+                const icon = document.getElementById('copy-icon');
+                
+                status.classList.remove('hidden');
+                icon.classList.add('text-green-500');
 
                 setTimeout(() => {
-                    btn.classList.replace('bg-green-500', 'bg-btc');
-                    btn.innerHTML = originalHtml;
-                    lucide.createIcons();
+                    status.classList.add('hidden');
+                    icon.classList.remove('text-green-500');
                 }, 2000);
             });
         }
 
-        // Lancement
         window.onload = fetchAddress;
     </script>
 </body>
