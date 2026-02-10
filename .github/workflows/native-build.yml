@@ -16,7 +16,6 @@ env:
 jobs:
   build-native:
     name: Build Native Image
-    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
