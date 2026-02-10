@@ -34,7 +34,6 @@
         #qr-target svg, #qr-target img { width: 100%; height: 100%; border-radius: 1.5rem; }
         .skeleton { background: linear-gradient(90deg, #1c2128 25%, #2d333b 50%, #1c2128 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
         @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-        /* Prevent address from breaking mid-character while allowing wrap */
         .address-break { word-break: break-all; }
     </style>
 </head>
@@ -97,7 +96,7 @@
             <div class="flex flex-col gap-4">
                 <label class="text-[11px] text-gray-500 font-bold uppercase tracking-widest px-1">Ownership Verifier</label>
                 <div class="relative group" id="verify-field">
-                    <input type="text" id="verify-input" placeholder="Paste address to check against your xpub..." 
+                    <input type="text" id="verify-input" placeholder="Paste address to verify against your wallet..." 
                         class="w-full bg-black/40 border border-border rounded-2xl py-5 pl-6 pr-28 text-sm mono outline-none focus:border-btc/50 transition-all">
                     <button onclick="verifyAddress()" id="verify-btn" 
                         class="absolute right-3 top-3 bottom-3 bg-btc text-dark px-5 rounded-xl text-xs font-black uppercase tracking-tighter hover:bg-white transition-all shadow-lg">
@@ -116,27 +115,33 @@
     </div>
 
     <script>
-        const UI = {
+        // Helper to grab elements at runtime (prevents 'null' errors)
+        const getUI = () => ({
             loader: document.getElementById('loader'),
             content: document.getElementById('main-content'),
             addr: document.getElementById('addr-text'),
             index: document.getElementById('idx'),
             qr: document.getElementById('qr-target'),
+            refreshBtn: document.getElementById('refresh-btn'),
             verifyBtn: document.getElementById('verify-btn'),
+            verifyInput: document.getElementById('verify-input'),
             toast: document.getElementById('toast'),
-            refreshBtn: document.getElementById('refresh-btn')
-        };
+            field: document.getElementById('verify-field'),
+            verifyResult: document.getElementById('verify-result'),
+            verifyBadge: document.getElementById('verify-badge')
+        });
 
         let currentAddress = "";
         let isFetching = false;
 
         async function fetchAddress() {
-            if (isFetching) return;
-            isFetching = true;
+            const ui = getUI();
+            if (isFetching || !ui.loader || !ui.content) return;
             
-            UI.content.classList.add('hidden');
-            UI.loader.classList.remove('hidden');
-            UI.refreshBtn.querySelector('i').classList.add('animate-spin');
+            isFetching = true;
+            ui.content.classList.add('hidden');
+            ui.loader.classList.remove('hidden');
+            ui.refreshBtn?.querySelector('i')?.classList.add('animate-spin');
 
             try {
                 const res = await fetch('/api/address/next', {
@@ -145,32 +150,36 @@
                     body: JSON.stringify({ startIndex: 0 })
                 });
                 
-                if (!res.ok) throw new Error();
+                if (!res.ok) throw new Error("HTTP " + res.status);
                 const data = await res.json();
                 
                 currentAddress = data.address;
-                UI.addr.innerText = data.address;
-                UI.index.innerText = data.index;
-                UI.qr.innerHTML = data.qrCodeImage.startsWith('data:') 
-                    ? `<img src="${data.qrCodeImage}" alt="QR">` : data.qrCodeImage;
+                ui.addr.innerText = data.address;
+                ui.index.innerText = data.index;
+                
+                if (data.qrCodeImage.startsWith('data:')) {
+                    ui.qr.innerHTML = `<img src="${data.qrCodeImage}" alt="QR" class="w-full h-full">`;
+                } else {
+                    ui.qr.innerHTML = data.qrCodeImage;
+                }
 
-                UI.loader.classList.add('hidden');
-                UI.content.classList.remove('hidden');
+                ui.loader.classList.add('hidden');
+                ui.content.classList.remove('hidden');
             } catch (err) {
                 console.error("Fetch failed:", err);
+                alert("Server Connection Error");
             } finally {
                 isFetching = false;
-                UI.refreshBtn.querySelector('i').classList.remove('animate-spin');
+                ui.refreshBtn?.querySelector('i')?.classList.remove('animate-spin');
             }
         }
 
         async function verifyAddress() {
-            const input = document.getElementById('verify-input');
-            const addr = input.value.trim();
+            const ui = getUI();
+            const addr = ui.verifyInput?.value.trim();
             if (!addr || isFetching) return;
 
-            const originalText = UI.verifyBtn.innerText;
-            UI.verifyBtn.innerText = "WAIT...";
+            ui.verifyBtn.innerText = "...";
             
             try {
                 const res = await fetch('/api/address/verify', {
@@ -181,46 +190,44 @@
                 const data = await res.json();
                 showVerificationResult(data);
             } catch (e) {
-                console.error("Verification failed:", e);
+                console.error("Verification error:", e);
             } finally {
-                UI.verifyBtn.innerText = originalText;
+                ui.verifyBtn.innerText = "Verify";
             }
         }
 
         function showVerificationResult(data) {
-            const resDiv = document.getElementById('verify-result');
-            const badge = document.getElementById('verify-badge');
-            const field = document.getElementById('verify-field');
-            
-            resDiv.classList.remove('hidden');
+            const ui = getUI();
+            ui.verifyResult.classList.remove('hidden');
             
             if (data.valid) {
-                field.style.borderColor = "#22c55e";
-                badge.className = "flex items-center gap-3 px-6 py-4 rounded-2xl border border-green-500/20 bg-green-500/10 text-green-500 text-xs font-bold uppercase";
-                badge.innerHTML = `<i data-lucide="shield-check" class="w-5 h-5"></i> Ownership Verified (Path Index #${data.index})`;
+                ui.field.style.borderColor = "#22c55e";
+                ui.verifyBadge.className = "flex items-center gap-3 px-6 py-4 rounded-2xl border border-green-500/20 bg-green-500/10 text-green-500 text-xs font-bold uppercase";
+                ui.verifyBadge.innerHTML = `<i data-lucide="shield-check" class="w-5 h-5"></i> Ownership Verified (Index #${data.index})`;
             } else {
-                field.style.borderColor = "#ef4444";
-                badge.className = "flex items-center gap-3 px-6 py-4 rounded-2xl border border-red-500/20 bg-red-500/10 text-red-500 text-xs font-bold uppercase";
-                badge.innerHTML = `<i data-lucide="shield-alert" class="w-5 h-5"></i> Address not derived from this xpub`;
+                ui.field.style.borderColor = "#ef4444";
+                ui.verifyBadge.className = "flex items-center gap-3 px-6 py-4 rounded-2xl border border-red-500/20 bg-red-500/10 text-red-500 text-xs font-bold uppercase";
+                ui.verifyBadge.innerHTML = `<i data-lucide="shield-alert" class="w-5 h-5"></i> Address not in this wallet`;
             }
-            lucide.createIcons();
+            if (window.lucide) lucide.createIcons();
         }
 
         function copyAddress() {
             if (!currentAddress) return;
+            const ui = getUI();
             navigator.clipboard.writeText(currentAddress);
-            UI.toast.classList.replace('opacity-0', 'opacity-100');
-            UI.toast.classList.add('-translate-y-6');
+            ui.toast.classList.replace('opacity-0', 'opacity-100');
+            ui.toast.classList.add('-translate-y-6');
             setTimeout(() => {
-                UI.toast.classList.replace('opacity-100', 'opacity-0');
-                UI.toast.classList.remove('-translate-y-6');
+                ui.toast.classList.replace('opacity-100', 'opacity-0');
+                ui.toast.classList.remove('-translate-y-6');
             }, 2000);
         }
 
-        window.onload = () => {
-            lucide.createIcons();
+        document.addEventListener('DOMContentLoaded', () => {
+            if (window.lucide) lucide.createIcons();
             fetchAddress();
-        };
+        });
     </script>
 </body>
 </html>
