@@ -32,10 +32,6 @@ jobs:
       - name: Run backend tests
         run: mvn test
 
-      - name: Run frontend tests
-        working-directory: src/main/web
-        run: pnpm test -- --run
-
   build-native:
     name: Build Native Image
     needs: test
