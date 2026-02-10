@@ -1,13 +1,16 @@
 FROM quay.io/quarkus/ubi9-quarkus-micro-image:2.0
+
+# Set working directory
 WORKDIR /work/
 
-# Copy the native executable into the container
-COPY --chown=1001:root *-runner /work/application
+# Copy the native executable and set permissions
+COPY --chown=1001:root --chmod=0755 target/*-runner /work/application
 
-# Create cache directory and set permissions
-RUN mkdir -p /work/cache && chown -R 1001:root /work/cache
-
+# Expose the default Quarkus port
 EXPOSE 8080
+
+# Run as non-root user
 USER 1001
 
-CMD ["./application", "-Dquarkus.http.host=0.0.0.0"]
+# Run the native executable with Quarkus host binding
+ENTRYPOINT ["/work/application", "-Dquarkus.http.host=0.0.0.0"]
