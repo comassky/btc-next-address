@@ -19,7 +19,7 @@ import java.util.stream.StreamSupport;
 @ApplicationScoped
 public class AddressCacheManager {
 
-    private static final String DATA_PATH = "data";
+    private static final String DATA_PATH = "/data";
     private static final String CACHE_FILE_NAME = "address-cache.json";
     private final Path cacheFilePath = Paths.get(DATA_PATH, CACHE_FILE_NAME);
 
