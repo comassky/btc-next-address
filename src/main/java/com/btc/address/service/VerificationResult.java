@@ -1,0 +1,1 @@
+public record VerificationResult(boolean valid, int index) {}

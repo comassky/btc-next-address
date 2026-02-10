@@ -13,18 +13,19 @@ import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 
 @Path("/api/address")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 public class AddressResource {
-    
+
     @Inject
     private AddressService addressService;
-    
+
     @ConfigProperty(name = "bitcoin.xpub")
     private String xpub;
-    
+
     @POST
     @Path("/next")
     @RunOnVirtualThread
@@ -35,7 +36,17 @@ public class AddressResource {
         int startIndex = Math.max(request.startIndex(), 0);
         return addressService.findNextUnusedAddress(xpub, startIndex, request.salt());
     }
-    
+
+    @POST
+    @Path("/verify")
+    public Response verify(VerifyRequest request) {
+        // Note: You should retrieve the 'xpub' from your secure config,
+        // not from the user's request, to ensure they are verifying against YOUR
+        // wallet.
+        var result = addressService.verifyAddressOwnership(xpub, request.address());
+        return Response.ok(result).build();
+    }
+
     @GET
     @Path("/health")
     @RunOnVirtualThread

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Bitcoin Receive - BIP84</title>
+    <title>Bitcoin Receive - BIP84 Pro</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -13,137 +13,186 @@
         tailwind.config = {
             theme: {
                 extend: {
-                    colors: {
-                        btc: '#f7931a',
-                        dark: '#0f1115',
-                        card: '#1c1f26',
-                        border: '#2d333b'
+                    colors: { 
+                        btc: '#f7931a', dark: '#0f1115', card: '#1c1f26', 
+                        border: '#2d333b', success: '#22c55e', danger: '#ef4444' 
                     },
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                        mono: ['JetBrains Mono', 'monospace'],
-                    },
+                    fontFamily: { sans: ['Inter', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
                     keyframes: {
-                        'slide-up': {
-                            '0%': { transform: 'translateY(10px)', opacity: '0' },
-                            '100%': { transform: 'translateY(0)', opacity: '1' },
-                        }
+                        'spring-up': {
+                            '0%': { transform: 'translateY(15px) translateX(-50%) scale(0.9)', opacity: '0' },
+                            '100%': { transform: 'translateY(0) translateX(-50%) scale(1)', opacity: '1' },
+                        },
+                        'shake': { '0%, 100%': { transform: 'translateX(0)' }, '25%': { transform: 'translateX(-4px)' }, '75%': { transform: 'translateX(4px)' } }
                     },
-                    animation: {
-                        'slide-up': 'slide-up 0.3s ease-out forwards',
-                    }
+                    animation: { 'spring-up': 'spring-up 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.2) forwards', 'shake': 'shake 0.2s ease-in-out 0s 2' }
                 }
             }
         }
     </script>
     
     <style>
-        #qr-target svg, #qr-target img { width: 100%; height: 100%; display: block; }
+        #qr-target svg, #qr-target img { width: 100%; height: 100%; display: block; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.1)); }
         * { -webkit-tap-highlight-color: transparent; }
-        .press-effect { transition: transform 0.1s ease; }
-        .press-effect:active { transform: scale(0.97); }
+        .press-effect { transition: all 0.2s ease; }
+        .press-effect:active { transform: scale(0.97); filter: brightness(1.1); }
+        .skeleton { background: linear-gradient(90deg, #2d333b 25%, #3e444d 50%, #2d333b 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
     </style>
 </head>
 
 <body class="bg-dark text-white font-sans min-h-screen flex items-center justify-center p-4">
 
     <div class="bg-card w-full max-w-xl rounded-[2.5rem] p-6 sm:p-10 border border-border shadow-2xl relative overflow-hidden">
-        <div class="absolute top-0 left-0 right-0 h-1.5 bg-btc"></div>
+        <div class="absolute top-0 left-0 right-0 h-1 bg-btc shadow-[0_0_15px_rgba(247,147,26,0.2)]"></div>
 
-        <div class="flex flex-col sm:flex-row items-center justify-between mb-8 gap-4">
+        <div class="flex items-center justify-between mb-8">
             <div class="flex items-center gap-4">
-                <div class="w-12 h-12 bg-btc/10 rounded-xl flex items-center justify-center">
-                    <i data-lucide="bitcoin" class="text-btc w-7 h-7"></i>
+                <div class="w-11 h-11 bg-btc/10 rounded-xl flex items-center justify-center border border-btc/20">
+                    <i data-lucide="bitcoin" class="text-btc w-6 h-6"></i>
                 </div>
-                <div class="text-left">
-                    <h1 class="text-xl font-bold tracking-tight">Receive Bitcoin</h1>
-                    <p class="text-gray-500 text-[10px] uppercase tracking-widest font-bold">Native SegWit • BIP84</p>
+                <div>
+                    <h1 class="text-lg font-bold">Receive BTC</h1>
+                    <p class="text-gray-500 text-[9px] uppercase tracking-[0.2em] font-bold">Native SegWit • BIP84</p>
                 </div>
             </div>
-            <div class="bg-white/5 border border-border px-4 py-2 rounded-full">
-                <span class="text-[10px] text-gray-400 uppercase font-bold tracking-widest">Index #<span id="idx" class="text-btc">0</span></span>
-            </div>
+            <button onclick="fetchAddress()" class="p-2 hover:bg-white/5 rounded-full transition-all text-gray-500 hover:text-btc">
+                <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+            </button>
         </div>
 
         <div id="loader" class="flex flex-col items-center gap-6">
-            <div class="w-64 h-64 bg-white/5 rounded-[2rem] animate-pulse"></div>
-            <div class="w-full h-16 bg-white/5 rounded-2xl animate-pulse"></div>
+            <div class="w-60 h-60 skeleton rounded-[2rem]"></div>
+            <div class="w-full h-14 skeleton rounded-xl"></div>
         </div>
 
-        <div id="main-content" class="hidden opacity-0 transition-opacity duration-500">
+        <div id="main-content" class="hidden opacity-0 transition-all duration-500 translate-y-2">
             <div class="flex flex-col items-center">
                 
-                <div class="bg-white p-6 rounded-[2.5rem] shadow-2xl shadow-black/50 mb-10 w-64 h-64">
+                <div class="bg-white p-5 rounded-[2.5rem] shadow-2xl mb-10 w-60 h-60">
                     <div id="qr-target"></div>
                 </div>
 
-                <div class="w-full relative group">
-                    <button onclick="copyAddress()" class="press-effect w-full bg-black/40 border border-border hover:border-btc/50 rounded-2xl p-5 transition-colors outline-none">
-                        <div class="flex items-center justify-between gap-4">
-                            <span id="addr-text" class="font-mono text-[11px] sm:text-[14px] text-gray-200 truncate flex-1 tracking-tight">...</span>
-                            <i data-lucide="copy" id="copy-icon" class="w-5 h-5 text-gray-500 group-hover:text-btc transition-colors"></i>
-                        </div>
+                <div class="w-full relative mb-10">
+                    <div class="flex justify-between mb-2 px-1">
+                         <span class="text-[9px] text-gray-500 uppercase font-bold tracking-widest">Address</span>
+                         <span class="text-[9px] text-btc font-bold">INDEX #<span id="idx">0</span></span>
+                    </div>
+
+                    <button onclick="copyAddress()" id="addr-btn" class="press-effect w-full bg-black/40 border border-border hover:border-btc/30 rounded-xl p-4 flex items-center justify-between gap-4 group">
+                        <span id="addr-text" class="font-mono text-[11px] sm:text-[13px] text-gray-300 truncate tracking-tight">...</span>
+                        <i data-lucide="copy" id="copy-icon" class="w-4 h-4 text-gray-500 group-hover:text-btc"></i>
                     </button>
 
-                    <div id="copy-toast" class="hidden absolute -top-12 left-1/2 -translate-x-1/2 bg-btc text-white text-[10px] font-bold uppercase tracking-widest px-4 py-2 rounded-full shadow-lg animate-slide-up">
-                        Copied to clipboard
+                    <div id="copy-toast" class="hidden absolute -top-10 left-1/2 bg-btc text-white text-[10px] font-bold uppercase tracking-widest px-4 py-1.5 rounded-full animate-spring-up">
+                        Copied
                     </div>
                 </div>
 
-                <p class="text-gray-500 text-[10px] mt-6 uppercase tracking-[0.2em] font-medium">Verified Deposit Address</p>
+                <div class="w-full pt-8 border-t border-border/40">
+                    <div class="relative group" id="verify-container">
+                        <input type="text" id="verify-input" placeholder="Verify an address..." class="w-full bg-black/20 border border-border rounded-xl py-3 pl-4 pr-20 text-[11px] font-mono outline-none focus:border-btc/40 transition-all">
+                        <button onclick="verifyAddress()" class="absolute right-1.5 top-1.5 bg-btc/10 hover:bg-btc text-btc hover:text-white px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase transition-all">Verify</button>
+                    </div>
+                    <div id="verify-result" class="hidden mt-3 text-center">
+                        <span id="verify-badge" class="px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase border animate-spring-up inline-flex items-center gap-2"></span>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
+        /**
+         * Ultra-light API Wrapper (Lighter than Axios, cleaner than raw Fetch)
+         */
+        const api = {
+            async post(url, data) {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+                return response.json();
+            }
+        };
+
         lucide.createIcons();
         let currentAddr = "";
 
         async function fetchAddress() {
+            toggleState(true);
             try {
-                const response = await fetch('/api/address/next', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ startIndex: 0 })
-                });
-                const data = await response.json();
-                render(data.address, data.index, data.qrCodeImage);
-            } catch (e) { console.error(e); }
+                const data = await api.post('/api/address/next', { startIndex: 0 });
+                render(data);
+            } catch (e) {
+                console.error("API Error:", e);
+                toggleState(false);
+            }
         }
 
-        function render(address, index, qrContent) {
-            currentAddr = address;
-            document.getElementById('addr-text').innerText = address;
-            document.getElementById('idx').innerText = index;
-            const target = document.getElementById('qr-target');
+        async function verifyAddress() {
+            const input = document.getElementById('verify-input');
+            const val = input.value.trim();
+            if (!val) return;
 
-            if (qrContent.startsWith('data:')) {
-                target.innerHTML = `<img src="${qrContent}" alt="QR">`;
-            } else {
-                target.innerHTML = qrContent;
+            try {
+                const data = await api.post('/api/address/verify', { address: val });
+                showVerification(data);
+            } catch (e) {
+                console.error("Verification Error:", e);
             }
+        }
 
-            document.getElementById('loader').classList.add('hidden');
+        function render(data) {
+            currentAddr = data.address;
+            document.getElementById('addr-text').innerText = data.address;
+            document.getElementById('idx').innerText = data.index;
+            document.getElementById('qr-target').innerHTML = data.qrCodeImage.startsWith('data:') 
+                ? `<img src="${data.qrCodeImage}">` : data.qrCodeImage;
+            toggleState(false);
+        }
+
+        function toggleState(isLoading) {
             const content = document.getElementById('main-content');
-            content.classList.remove('hidden');
-            setTimeout(() => content.classList.replace('opacity-0', 'opacity-100'), 50);
+            const loader = document.getElementById('loader');
+            if (isLoading) {
+                content.classList.add('hidden', 'opacity-0');
+                loader.classList.remove('hidden');
+            } else {
+                loader.classList.add('hidden');
+                content.classList.remove('hidden');
+                setTimeout(() => content.classList.add('opacity-100', 'translate-y-0'), 50);
+            }
         }
 
         function copyAddress() {
-            if (!currentAddr) return;
             navigator.clipboard.writeText(currentAddr).then(() => {
                 const toast = document.getElementById('copy-toast');
-                const icon = document.getElementById('copy-icon');
-                
-                // Visual feedback
                 toast.classList.remove('hidden');
-                icon.classList.add('text-btc');
-                
-                setTimeout(() => {
-                    toast.classList.add('hidden');
-                    icon.classList.remove('text-btc');
-                }, 2000);
+                setTimeout(() => toast.classList.add('hidden'), 2000);
             });
+        }
+
+        function showVerification(data) {
+            const container = document.getElementById('verify-container');
+            const result = document.getElementById('verify-result');
+            const badge = document.getElementById('verify-badge');
+            
+            result.classList.remove('hidden');
+            container.classList.remove('animate-shake', 'border-success', 'border-danger');
+
+            if (data.valid) {
+                container.classList.add('border-success');
+                badge.className = "px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase border border-success/30 bg-success/10 text-success inline-flex items-center gap-2";
+                badge.innerHTML = `<i data-lucide="check" class="w-3 h-3"></i> Match found (Index #${data.index})`;
+            } else {
+                container.classList.add('animate-shake', 'border-danger');
+                badge.className = "px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase border border-danger/30 bg-danger/10 text-danger inline-flex items-center gap-2";
+                badge.innerHTML = `<i data-lucide="x" class="w-3 h-3"></i> No match for this xpub`;
+            }
+            lucide.createIcons();
         }
 
         window.onload = fetchAddress;
