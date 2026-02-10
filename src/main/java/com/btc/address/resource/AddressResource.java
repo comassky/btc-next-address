@@ -1,13 +1,18 @@
 package com.btc.address.resource;
 
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+
 import com.btc.address.service.AddressService;
 
-import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.smallrye.common.annotation.RunOnVirtualThread;
 import jakarta.inject.Inject;
-import jakarta.ws.rs.*;
+import jakarta.ws.rs.BadRequestException;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 @Path("/api/address")
 @Produces(MediaType.APPLICATION_JSON)
@@ -38,14 +43,5 @@ public class AddressResource {
         boolean configured = xpub != null && !xpub.isEmpty();
         return new HealthResponse(configured ? "Address service is ready" : "Address service not configured");
     }
-    
-    @RegisterForReflection
-    public record AddressRequest(int startIndex, String salt) {
-        public AddressRequest() {
-            this(0, null);
-        }
-    }
-    
-    @RegisterForReflection
-    public record HealthResponse(String status) {}
+
 }
