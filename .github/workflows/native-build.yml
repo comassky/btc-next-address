@@ -1,23 +1,64 @@
-name: Build and Push Native Image
+name: Main / Docker Native (GraalVM)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
+    tags: ["*.*.*"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  JAVA_VERSION: '21'
+  GRAALVM_VERSION: "25"
 
 jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: "25"
+          distribution: "temurin"
+          cache: maven
+
+
+
+      - name: Set up Node.js & pnpm
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.12.0"
+          cache: "npm"
+          cache-dependency-path: src/main/web/pnpm-lock.yaml
+      - name: Install pnpm globally
+        working-directory: src/main/web
+        run: npm install -g pnpm@10.26.2
+      - name: Install dependencies (pnpm)
+        working-directory: src/main/web
+        run: pnpm install
+
+      - name: Run backend tests
+        run: mvn test
+
+      - name: Run frontend tests
+        working-directory: src/main/web
+        run: pnpm test -- --run
+
   build-native:
-    name: Build Native Executable with Maven
+    name: Build Native Image
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      packages: write
+      id-token: write
 
     steps:
       - name: Checkout repository
@@ -26,60 +67,59 @@ jobs:
       - name: Set up GraalVM
         uses: graalvm/setup-graalvm@v1
         with:
-          java-version: ${{ env.JAVA_VERSION }}
-          distribution: 'graalvm'
+          java-version: ${{ env.GRAALVM_VERSION }}
+          distribution: "graalvm-community"
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          native-image-job-reports: "true"
+
+      - name: Set up Maven
+        uses: stCarolas/setup-maven@v5
+        with:
+          maven-version: "3.9.12"
 
       - name: Cache Maven packages
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
-          path: ~/.m2
-          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
-          restore-keys: ${{ runner.os }}-m2
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
 
-      - name: Grant execute permission for mvnw
-        run: chmod +x ./mvnw
+      - name: Cache Node.js modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            src/main/web/node_modules
+            ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('src/main/web/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
 
-      - name: Build Native Image
-        run: ./mvnw package -Dnative -DskipTests
-
-      - name: List target directory contents # Debugging step
+      - name: Build Native Executable
         run: |
-          echo "Listing contents of target/ directory:"
-          ls -R target
+          mvn -B clean package -Pnative \
+            -DskipTests \
+            -Dquarkus.native.container-build=false \
+            -Dquarkus.native.native-image-xmx=6g \
+            -Dquarkus.native.additional-build-args="--verbose"
+        env:
+          MAVEN_OPTS: "-Xmx8g"
 
-      - name: Upload Native Artifact
-        uses: actions/upload-artifact@v4
+      - name: Verify Native Executable
+        run: |
+          ls -lh target/*-runner
+          file target/*-runner
+
+      - name: Install cosign
+        if: github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@v4.0.0
         with:
-          name: native-executable
-          path: target/*-runner
-          retention-days: 1
-
-  build-and-push-image:
-    name: Build and Push Docker Image
-    needs: build-native
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Download native executable
-        uses: actions/download-artifact@v4
-        with:
-          name: native-executable
-          path: target/
-
-      - name: Grant execute permission for downloaded artifact
-        run: chmod +x target/*-runner
+          cosign-release: "v3.0.3"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log into GitHub Container Registry
+      - name: Log into registry ${{ env.REGISTRY }}
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
@@ -93,16 +133,36 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=sha,prefix=,format=short
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            # If this is a tag (release), build latest and X.Y.Z
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=ref,event=tag
+            # Otherwise, build main
+            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
 
       - name: Build and push Docker image
+        id: build-and-push
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./src/main/docker/Dockerfile.native
+          file: ./Dockerfile.native
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+      - name: Sign the published Docker image
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.build-and-push.outputs.digest }}
+        run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
+
+      - name: Upload Native Executable as Artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-executable
+          path: target/*-runner
+          retention-days: 7
