@@ -1,5 +1,5 @@
 FROM container-registry.oracle.com/graalvm/native-image:21 AS build
-RUN microdnf install -y maven
+RUN microdnf install -y freetype fontconfig && microdnf clean all
 WORKDIR /code
 COPY mvnw /code/mvnw
 COPY .mvn /code/.mvn

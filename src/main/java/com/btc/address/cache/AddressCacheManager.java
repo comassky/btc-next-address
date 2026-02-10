@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+
+import io.quarkus.runtime.annotations.RegisterForReflection;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -19,6 +21,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 @ApplicationScoped
+@RegisterForReflection
 public class AddressCacheManager {
 
     @ConfigProperty(name = "bitcoin.cache.path", defaultValue = "cache")
@@ -33,6 +36,7 @@ public class AddressCacheManager {
 
     private Map<String, CacheEntry> cache;
 
+    @RegisterForReflection
     public record CacheEntry(
             @JsonIgnore String hash,
             boolean used,

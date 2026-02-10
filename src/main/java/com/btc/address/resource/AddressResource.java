@@ -1,6 +1,8 @@
 package com.btc.address.resource;
 
 import com.btc.address.service.AddressService;
+
+import io.quarkus.runtime.annotations.RegisterForReflection;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -34,11 +36,13 @@ public class AddressResource {
         return new HealthResponse(configured ? "Address service is ready" : "Address service not configured");
     }
     
+    @RegisterForReflection
     public record AddressRequest(int startIndex, String salt) {
         public AddressRequest() {
             this(0, null);
         }
     }
     
+    @RegisterForReflection
     public record HealthResponse(String status) {}
 }
