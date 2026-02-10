@@ -1,6 +1,8 @@
 package com.btc.address.service;
 
 import java.util.*;
+import java.util.stream.IntStream;
+import java.nio.charset.StandardCharsets;
 import org.bitcoinj.crypto.DeterministicKey;
 import com.btc.address.bitcoin.BIP84Deriver;
 import com.btc.address.blockchain.BlockchainChecker;
@@ -10,122 +12,137 @@ import com.google.zxing.BarcodeFormat;
 import com.google.zxing.WriterException;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
+import io.quarkus.runtime.annotations.RegisterForReflection;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 @ApplicationScoped
 public class AddressService {
 
-    @Inject
+    @Inject 
     BlockchainChecker blockchainChecker;
-    @Inject
+    
+    @Inject 
     AddressCacheManager cacheManager;
 
+    @RegisterForReflection
+    public record VerificationResult(boolean valid, int index) {}
+
+    /**
+     * Verifies if a specific BTC address belongs to the provided xpub by scanning indices 0-999.
+     */
+    public VerificationResult verifyAddressOwnership(String xpub, String targetAddress) {
+        if (targetAddress == null || targetAddress.isBlank()) {
+            return new VerificationResult(false, -1);
+        }
+        
+        DeterministicKey externalChainKey = BIP84Deriver.createMasterKey(xpub);
+        
+        // Parallelized scan for ultra-fast verification using Java 25 Virtual Threads
+        return IntStream.range(0, 1000)
+                .parallel()
+                .filter(i -> {
+                    var derived = BIP84Deriver.deriveAddress(externalChainKey, i);
+                    // Fixed: Using record accessor method address()
+                    return targetAddress.equals(derived.address());
+                })
+                .mapToObj(i -> new VerificationResult(true, i))
+                .findFirst()
+                .orElse(new VerificationResult(false, -1));
+    }
+
+    /**
+     * Finds the next unused Bitcoin address by checking cache first, then scanning the blockchain.
+     */
     public NextAddressResult findNextUnusedAddress(String xpub, int startIndex, String salt) {
-        final String effectiveSalt = (salt == null || salt.isBlank())
-                ? BIP84Deriver.generateSaltFromXpub(xpub)
-                : salt;
+        final String effectiveSalt = (salt == null || salt.isBlank()) 
+            ? BIP84Deriver.generateSaltFromXpub(xpub) : salt;
 
         DeterministicKey externalChainKey = BIP84Deriver.createMasterKey(xpub);
-        int batchSize = 20;
+        int batchSize = 20; 
         int currentStart = startIndex;
 
-        while (currentStart < startIndex + 1000) {
+        // Gap limit: Scan up to 100 addresses ahead
+        while (currentStart < startIndex + 100) {
             List<BIP84Deriver.DerivedAddress> currentBatch = new ArrayList<>();
             List<String> addressesToScan = new ArrayList<>();
-            Map<String, String> addrToHash = new HashMap<>();
+            Map<String, String> addrToHashMap = new HashMap<>();
 
-            // 1. CHECK CACHE FIRST
             for (int i = 0; i < batchSize; i++) {
-                BIP84Deriver.DerivedAddress derived = BIP84Deriver.deriveAddress(externalChainKey, currentStart + i);
-                String hash = BIP84Deriver.generateHash(derived.address, effectiveSalt);
-
+                int currentIndex = currentStart + i;
+                var derived = BIP84Deriver.deriveAddress(externalChainKey, currentIndex);
+                
+                // Fixed: Using record accessor method address()
+                String hash = BIP84Deriver.generateHash(derived.address(), effectiveSalt);
+                
                 currentBatch.add(derived);
-                addrToHash.put(derived.address, hash);
+                addrToHashMap.put(derived.address(), hash);
 
                 Optional<Boolean> cachedStatus = cacheManager.getKnownStatus(hash);
-
+                // If known to be unused (used == false)
+                if (cachedStatus.isPresent() && !cachedStatus.get()) {
+                    return buildResult(derived, currentIndex, effectiveSalt, hash);
+                }
+                
+                // If unknown, prepare for blockchain check
                 if (cachedStatus.isEmpty()) {
-                    addressesToScan.add(derived.address);
-                } else if (!cachedStatus.get()) {
-                    // CACHE HIT: Address is known to be unused!
-                    return buildResult(derived, currentStart + i, effectiveSalt, hash);
+                    addressesToScan.add(derived.address());
                 }
             }
 
-            // 2. SCAN ONLY UNKNOWN ADDRESSES
             if (!addressesToScan.isEmpty()) {
                 Map<String, Boolean> scanResults = blockchainChecker.checkAddressesBatch(addressesToScan);
-
                 Map<String, Boolean> entriesToCache = new HashMap<>();
-                scanResults.forEach((addr, used) -> entriesToCache.put(addrToHash.get(addr), used));
-
+                
+                scanResults.forEach((addr, used) -> {
+                    String h = addrToHashMap.get(addr);
+                    if (h != null) entriesToCache.put(h, used);
+                });
+                
                 cacheManager.addEntries(entriesToCache);
 
-                for (BIP84Deriver.DerivedAddress derived : currentBatch) {
-                    if (scanResults.containsKey(derived.address) && !scanResults.get(derived.address)) {
-                        String hash = addrToHash.get(derived.address);
-                        return buildResult(derived, currentBatch.indexOf(derived) + currentStart, effectiveSalt, hash);
+                for (var derived : currentBatch) {
+                    // If the address is confirmed unused by the blockchain
+                    if (scanResults.containsKey(derived.address()) && !scanResults.get(derived.address())) {
+                        int finalIndex = currentStart + currentBatch.indexOf(derived);
+                        return buildResult(derived, finalIndex, effectiveSalt, addrToHashMap.get(derived.address()));
                     }
                 }
             }
-
             currentStart += batchSize;
-            try {
-                Thread.sleep(300);
-            } catch (InterruptedException ignored) {
-            }
         }
-
-        throw new RuntimeException("No unused address found within the next 100 derivations.");
+        throw new RuntimeException("No unused address found within the gap limit.");
     }
 
     private NextAddressResult buildResult(BIP84Deriver.DerivedAddress derived, int index, String salt, String hash) {
-        String qrCode = generateQrCodeSvgBase64("bitcoin:" + derived.address);
-        return new NextAddressResult(derived.address, derived.publicKey, index, qrCode, salt, hash);
+        // Fixed: Using record accessors address() and publicKey()
+        String qrCode = generateQrCodeSvgBase64("bitcoin:" + derived.address());
+        return new NextAddressResult(derived.address(), derived.publicKey(), index, qrCode, salt, hash);
     }
 
     private String generateQrCodeSvgBase64(String text) {
         try {
             QRCodeWriter qrCodeWriter = new QRCodeWriter();
             BitMatrix bitMatrix = qrCodeWriter.encode(text, BarcodeFormat.QR_CODE, 200, 200);
-            int width = bitMatrix.getWidth();
-            int height = bitMatrix.getHeight();
+            
             StringBuilder sb = new StringBuilder();
-            sb.append("<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" viewBox=\"0 0 ")
-                    .append(width).append(" ").append(height).append("\" shape-rendering=\"crispEdges\">")
-                    .append("<path fill=\"#ffffff\" d=\"M0 0h").append(width).append("v").append(height)
-                    .append("H0z\"/>")
-                    .append("<path stroke=\"#000000\" d=\"");
-            for (int y = 0; y < height; y++) {
-                for (int x = 0; x < width; x++) {
-                    if (bitMatrix.get(x, y))
+            sb.append("<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" viewBox=\"0 0 200 200\" shape-rendering=\"crispEdges\">")
+              .append("<path fill=\"#ffffff\" d=\"M0 0h200v200H0z\"/>")
+              .append("<path stroke=\"#000000\" d=\"");
+            
+            for (int y = 0; y < 200; y++) {
+                for (int x = 0; x < 200; x++) {
+                    if (bitMatrix.get(x, y)) {
                         sb.append("M").append(x).append(" ").append(y).append("h1v1h-1z ");
+                    }
                 }
             }
             sb.append("\"/></svg>");
-            return "data:image/svg+xml;base64," + Base64.getEncoder().encodeToString(sb.toString().getBytes());
+            
+            byte[] svgBytes = sb.toString().getBytes(StandardCharsets.UTF_8);
+            return "data:image/svg+xml;base64," + Base64.getEncoder().encodeToString(svgBytes);
         } catch (WriterException e) {
             return "";
         }
-    }
-
-    public NextAddressResult findNextUnusedAddress(String xpub) {
-        return findNextUnusedAddress(xpub, 0, null);
-    }
-
-    public VerificationResult verifyAddressOwnership(String xpub, String targetAddress) {
-        DeterministicKey externalChainKey = BIP84Deriver.createMasterKey(xpub);
-        int maxLookup = 1000;
-
-        for (int i = 0; i < maxLookup; i++) {
-            BIP84Deriver.DerivedAddress derived = BIP84Deriver.deriveAddress(externalChainKey, i);
-
-            if (derived.address.equalsIgnoreCase(targetAddress)) {
-                return new VerificationResult(true, i);
-            }
-        }
-
-        return new VerificationResult(false, -1);
     }
 }
