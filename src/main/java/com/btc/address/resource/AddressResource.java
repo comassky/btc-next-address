@@ -3,6 +3,7 @@ package com.btc.address.resource;
 import com.btc.address.service.AddressService;
 
 import io.quarkus.runtime.annotations.RegisterForReflection;
+import io.smallrye.common.annotation.RunOnVirtualThread;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -21,6 +22,7 @@ public class AddressResource {
     
     @POST
     @Path("/next")
+    @RunOnVirtualThread
     public NextAddressResult getNextUnusedAddress(AddressRequest request) {
         if (xpub == null || xpub.isEmpty()) {
             throw new BadRequestException("bitcoin.xpub is not configured");
@@ -31,6 +33,7 @@ public class AddressResource {
     
     @GET
     @Path("/health")
+    @RunOnVirtualThread
     public HealthResponse health() {
         boolean configured = xpub != null && !xpub.isEmpty();
         return new HealthResponse(configured ? "Address service is ready" : "Address service not configured");

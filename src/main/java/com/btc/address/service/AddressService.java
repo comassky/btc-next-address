@@ -15,7 +15,6 @@ import com.google.zxing.WriterException;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
 
-import io.smallrye.common.annotation.RunOnVirtualThread;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -28,7 +27,6 @@ public class AddressService {
     @Inject
     AddressCacheManager cacheManager;
 
-    @RunOnVirtualThread
     public NextAddressResult findNextUnusedAddress(String xpub, int startIndex, String salt) {
         final String effectiveSalt = (salt == null || salt.isBlank()) 
             ? BIP84Deriver.generateSaltFromXpub(xpub) : salt;
