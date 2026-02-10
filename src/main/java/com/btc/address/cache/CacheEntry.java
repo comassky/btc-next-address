@@ -7,10 +7,9 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
 
 @RegisterForReflection
 public record CacheEntry(
-        @JsonIgnore String hash,
         boolean used,
         Instant timestamp) {
-    public CacheEntry(String hash, boolean used) {
-        this(hash, used, Instant.now());
+    public CacheEntry(boolean used) {
+        this(used, Instant.now());
     }
 }

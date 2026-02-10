@@ -1,8 +1,11 @@
 package com.btc.address.service;
 
 import java.util.*;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.nio.charset.StandardCharsets;
+
+import com.btc.address.resource.AddressData;
 import org.bitcoinj.crypto.DeterministicKey;
 import com.btc.address.bitcoin.BIP84Deriver;
 import com.btc.address.blockchain.BlockchainChecker;
@@ -33,113 +36,124 @@ public class AddressService {
     public record VerificationResult(boolean valid, int index) {}
 
     /**
-     * Verifies if a specific BTC address belongs to the provided xpub by scanning indices up to gapLimit.
+     * Verifies if a target address belongs to a given xpub using parallelized derivation.
      */
     public VerificationResult verifyAddressOwnership(String xpub, String targetAddress) {
         if (targetAddress == null || targetAddress.isBlank()) {
             return new VerificationResult(false, -1);
         }
-        
-        DeterministicKey externalChainKey = BIP84Deriver.createMasterKey(xpub);
-        
+
+        final var masterKey = BIP84Deriver.createMasterKey(xpub);
+
         return IntStream.range(0, gapLimit)
-                .parallel()
-                .filter(i -> {
-                    var derived = BIP84Deriver.deriveAddress(externalChainKey, i);
-                    return targetAddress.equals(derived.address());
-                })
-                .mapToObj(i -> new VerificationResult(true, i))
+                .parallel() // Leverages multiple CPU cores for heavy SECP256K1 crypto
+                .mapToObj(i -> new VerificationResult(targetAddress.equals(BIP84Deriver.deriveAddress(masterKey, i).address()), i))
+                .filter(VerificationResult::valid)
                 .findFirst()
                 .orElse(new VerificationResult(false, -1));
     }
 
     /**
-     * Finds the next unused Bitcoin address by checking cache first, then scanning the blockchain.
+     * Finds the next unused Bitcoin address using a high-performance batching strategy.
      */
     public NextAddressResult findNextUnusedAddress(String xpub, int startIndex, String salt) {
-        final String effectiveSalt = (salt == null || salt.isBlank()) 
-            ? BIP84Deriver.generateSaltFromXpub(xpub) : salt;
+        final String effectiveSalt = (salt == null || salt.isBlank())
+                ? BIP84Deriver.generateSaltFromXpub(xpub) : salt;
 
-        DeterministicKey externalChainKey = BIP84Deriver.createMasterKey(xpub);
-        int batchSize = 20; 
-        int currentStart = startIndex;
+        final var masterKey = BIP84Deriver.createMasterKey(xpub);
+        final int batchSize = 20;
 
-        while (currentStart < startIndex + gapLimit) {
-            List<BIP84Deriver.DerivedAddress> currentBatch = new ArrayList<>();
-            List<String> addressesToScan = new ArrayList<>();
-            Map<String, String> addrToHashMap = new HashMap<>();
+        // Iterate through address blocks until the gap limit is reached
+        for (int currentStart = startIndex; currentStart < startIndex + gapLimit; currentStart += batchSize) {
+            final int end = Math.min(currentStart + batchSize, startIndex + gapLimit);
 
-            for (int i = 0; i < batchSize; i++) {
-                int currentIndex = currentStart + i;
-                // Safety check: stop if we exceed the dynamic gap limit inside the batch
-                if (currentIndex >= startIndex + gapLimit) break;
+            // 1. Bulk derivation and hashing
+            final var batch = IntStream.range(currentStart, end)
+                    .mapToObj(i -> {
+                        var derived = BIP84Deriver.deriveAddress(masterKey, i);
+                        var hash = BIP84Deriver.generateHash(derived.address(), effectiveSalt);
+                        return new AddressData(i, derived, hash);
+                    }).toList();
 
-                var derived = BIP84Deriver.deriveAddress(externalChainKey, currentIndex);
-                String hash = BIP84Deriver.generateHash(derived.address(), effectiveSalt);
-                
-                currentBatch.add(derived);
-                addrToHashMap.put(derived.address(), hash);
+            // 2. Multi-status cache lookup (minimizes I/O overhead)
+            final var cachedStatuses = cacheManager.getMultiStatus(batch.stream().map(AddressData::hash).toList());
 
-                Optional<Boolean> cachedStatus = cacheManager.getKnownStatus(hash);
-                if (cachedStatus.isPresent() && !cachedStatus.get()) {
-                    return buildResult(derived, currentIndex, effectiveSalt, hash);
-                }
-                
-                if (cachedStatus.isEmpty()) {
-                    addressesToScan.add(derived.address());
-                }
+            // 3. Early exit if an unused address is found in cache (Pattern Matching logic)
+            final var foundInCache = batch.stream()
+                    .filter(item -> cachedStatuses.get(item.hash()) instanceof Boolean used && !used)
+                    .findFirst();
+
+            if (foundInCache.isPresent()) {
+                var item = foundInCache.get();
+                return buildResult(item.derived(), item.index(), effectiveSalt, item.hash());
             }
 
-            if (!addressesToScan.isEmpty()) {
-                Map<String, Boolean> scanResults = blockchainChecker.checkAddressesBatch(addressesToScan);
-                Map<String, Boolean> entriesToCache = new HashMap<>();
-                
-                scanResults.forEach((addr, used) -> {
-                    String h = addrToHashMap.get(addr);
-                    if (h != null) entriesToCache.put(h, used);
-                });
-                
-                cacheManager.addEntries(entriesToCache);
+            // 4. Identify unknown addresses for Blockchain Scanning
+            var toScan = batch.stream()
+                    .filter(item -> !cachedStatuses.containsKey(item.hash()))
+                    .toList();
 
-                for (var derived : currentBatch) {
-                    if (scanResults.containsKey(derived.address()) && !scanResults.get(derived.address())) {
-                        int finalIndex = currentStart + currentBatch.indexOf(derived);
-                        return buildResult(derived, finalIndex, effectiveSalt, addrToHashMap.get(derived.address()));
+            if (!toScan.isEmpty()) {
+                // Perform external network call for the unknown batch
+                var scanResults = blockchainChecker.checkAddressesBatch(toScan.stream().map(d -> d.derived().address()).toList());
+
+                // Bulk update the local cache with fresh results
+                var newEntries = new HashMap<String, Boolean>();
+                toScan.forEach(item -> {
+                    if (scanResults.get(item.derived().address()) instanceof Boolean used) {
+                        newEntries.put(item.hash(), used);
+                    }
+                });
+                cacheManager.addEntries(newEntries);
+
+                // Return the first confirmed unused address from the fresh scan
+                for (var item : toScan) {
+                    if (scanResults.get(item.derived().address()) instanceof Boolean used && !used) {
+                        return buildResult(item.derived(), item.index(), effectiveSalt, item.hash());
                     }
                 }
             }
-            currentStart += batchSize;
         }
-        throw new RuntimeException("No unused address found within the gap limit of " + gapLimit);
+
+        throw new RuntimeException("Gap limit reached: No unused address found within " + gapLimit + " indices.");
     }
 
+    /**
+     * Constructs the final response object including the QR code.
+     */
     private NextAddressResult buildResult(BIP84Deriver.DerivedAddress derived, int index, String salt, String hash) {
-        String qrCode = generateQrCodeSvgBase64("bitcoin:" + derived.address());
-        return new NextAddressResult(derived.address(), derived.publicKey(), index, qrCode, salt, hash);
+        return new NextAddressResult(
+                derived.address(),
+                derived.publicKey(),
+                index,
+                generateQrCodeSvgBase64("bitcoin:" + derived.address()),
+                salt,
+                hash
+        );
     }
 
+    /**
+     * Generates a lightweight SVG QR code as a Base64 string.
+     */
     private String generateQrCodeSvgBase64(String text) {
         try {
-            QRCodeWriter qrCodeWriter = new QRCodeWriter();
-            BitMatrix bitMatrix = qrCodeWriter.encode(text, BarcodeFormat.QR_CODE, 200, 200);
-            
-            StringBuilder sb = new StringBuilder();
-            sb.append("<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" viewBox=\"0 0 200 200\" shape-rendering=\"crispEdges\">")
-              .append("<path fill=\"#ffffff\" d=\"M0 0h200v200H0z\"/>")
-              .append("<path stroke=\"#000000\" d=\"");
-            
-            for (int y = 0; y < 200; y++) {
-                for (int x = 0; x < 200; x++) {
-                    if (bitMatrix.get(x, y)) {
-                        sb.append("M").append(x).append(" ").append(y).append("h1v1h-1z ");
-                    }
+            var matrix = new QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, 200, 200);
+            var sb = new StringBuilder();
+
+            // Building a high-performance, crisp SVG using path drawing
+            sb.append("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 200 200\" shape-rendering=\"crispEdges\">")
+                    .append("<rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>")
+                    .append("<path fill=\"#000000\" d=\"");
+
+            for (int y = 0; y < matrix.getHeight(); y++) {
+                for (int x = 0; x < matrix.getWidth(); x++) {
+                    if (matrix.get(x, y)) sb.append("M").append(x).append(" ").append(y).append("h1v1h-1z ");
                 }
             }
             sb.append("\"/></svg>");
-            
-            byte[] svgBytes = sb.toString().getBytes(StandardCharsets.UTF_8);
-            return "data:image/svg+xml;base64," + Base64.getEncoder().encodeToString(svgBytes);
-        } catch (WriterException e) {
+
+            return "data:image/svg+xml;base64," + Base64.getEncoder().encodeToString(sb.toString().getBytes(StandardCharsets.UTF_8));
+        } catch (WriterException _) { // Java 21+ Unnamed variable syntax
             return "";
         }
     }
