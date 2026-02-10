@@ -23,18 +23,25 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Libération massive d'espace disque
+      # Libération massive d'espace disque (Indispensable pour le build natif)
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
         with:
-          root-reserve-mb: 8192 # Garde 8Go pour le système
+          root-reserve-mb: 8192
           temp-reserve-mb: 2048
           remove-dotnet: 'true'
           remove-android: 'true'
           remove-haskell: 'true'
           remove-codeql: 'true'
-          remove-docker-images: 'true' # Nettoie les images pré-installées inutiles
-          swap-size-mb: 2048 # Réduit le swap (4Go était peut-être trop gourmand sur le disque)
+          remove-docker-images: 'true'
+          swap-size-mb: 2048
+
+      # Étape de diagnostic pour confirmer la présence du Dockerfile
+      - name: Verify files presence
+        run: |
+          echo "Contenu de la racine :"
+          ls -F
+          if [ -f "Dockerfile" ]; then echo "✅ Dockerfile trouvé à la racine"; else echo "❌ Dockerfile MANQUANT"; exit 1; fi
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -60,7 +67,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: Dockerfile
+          file: ./Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
