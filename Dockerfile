@@ -1,8 +1,8 @@
-# --- STEP 1: Build ---
+# --- STEP 1: Build (GraalVM 25) ---
 FROM container-registry.oracle.com/graalvm/native-image:25 AS build
-RUN microdnf install -y maven
 WORKDIR /code
 COPY . .
+RUN chmod +x mvnw
 RUN ./mvnw package -Dnative
 
 # --- STEP 2: Runtime (The "Top" Micro Image) ---
