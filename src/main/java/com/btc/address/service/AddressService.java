@@ -15,6 +15,7 @@ import com.google.zxing.qrcode.QRCodeWriter;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 @ApplicationScoped
 public class AddressService {
@@ -25,11 +26,14 @@ public class AddressService {
     @Inject 
     AddressCacheManager cacheManager;
 
+    @ConfigProperty(name = "bitcoin.gap-limit")
+    int gapLimit;
+
     @RegisterForReflection
     public record VerificationResult(boolean valid, int index) {}
 
     /**
-     * Verifies if a specific BTC address belongs to the provided xpub by scanning indices 0-999.
+     * Verifies if a specific BTC address belongs to the provided xpub by scanning indices up to gapLimit.
      */
     public VerificationResult verifyAddressOwnership(String xpub, String targetAddress) {
         if (targetAddress == null || targetAddress.isBlank()) {
@@ -38,12 +42,10 @@ public class AddressService {
         
         DeterministicKey externalChainKey = BIP84Deriver.createMasterKey(xpub);
         
-        // Parallelized scan for ultra-fast verification using Java 25 Virtual Threads
-        return IntStream.range(0, 1000)
+        return IntStream.range(0, gapLimit)
                 .parallel()
                 .filter(i -> {
                     var derived = BIP84Deriver.deriveAddress(externalChainKey, i);
-                    // Fixed: Using record accessor method address()
                     return targetAddress.equals(derived.address());
                 })
                 .mapToObj(i -> new VerificationResult(true, i))
@@ -62,29 +64,27 @@ public class AddressService {
         int batchSize = 20; 
         int currentStart = startIndex;
 
-        // Gap limit: Scan up to 100 addresses ahead
-        while (currentStart < startIndex + 100) {
+        while (currentStart < startIndex + gapLimit) {
             List<BIP84Deriver.DerivedAddress> currentBatch = new ArrayList<>();
             List<String> addressesToScan = new ArrayList<>();
             Map<String, String> addrToHashMap = new HashMap<>();
 
             for (int i = 0; i < batchSize; i++) {
                 int currentIndex = currentStart + i;
+                // Safety check: stop if we exceed the dynamic gap limit inside the batch
+                if (currentIndex >= startIndex + gapLimit) break;
+
                 var derived = BIP84Deriver.deriveAddress(externalChainKey, currentIndex);
-                
-                // Fixed: Using record accessor method address()
                 String hash = BIP84Deriver.generateHash(derived.address(), effectiveSalt);
                 
                 currentBatch.add(derived);
                 addrToHashMap.put(derived.address(), hash);
 
                 Optional<Boolean> cachedStatus = cacheManager.getKnownStatus(hash);
-                // If known to be unused (used == false)
                 if (cachedStatus.isPresent() && !cachedStatus.get()) {
                     return buildResult(derived, currentIndex, effectiveSalt, hash);
                 }
                 
-                // If unknown, prepare for blockchain check
                 if (cachedStatus.isEmpty()) {
                     addressesToScan.add(derived.address());
                 }
@@ -102,7 +102,6 @@ public class AddressService {
                 cacheManager.addEntries(entriesToCache);
 
                 for (var derived : currentBatch) {
-                    // If the address is confirmed unused by the blockchain
                     if (scanResults.containsKey(derived.address()) && !scanResults.get(derived.address())) {
                         int finalIndex = currentStart + currentBatch.indexOf(derived);
                         return buildResult(derived, finalIndex, effectiveSalt, addrToHashMap.get(derived.address()));
@@ -111,11 +110,10 @@ public class AddressService {
             }
             currentStart += batchSize;
         }
-        throw new RuntimeException("No unused address found within the gap limit.");
+        throw new RuntimeException("No unused address found within the gap limit of " + gapLimit);
     }
 
     private NextAddressResult buildResult(BIP84Deriver.DerivedAddress derived, int index, String salt, String hash) {
-        // Fixed: Using record accessors address() and publicKey()
         String qrCode = generateQrCodeSvgBase64("bitcoin:" + derived.address());
         return new NextAddressResult(derived.address(), derived.publicKey(), index, qrCode, salt, hash);
     }
