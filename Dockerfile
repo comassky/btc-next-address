@@ -1,16 +1,48 @@
-FROM quay.io/quarkus/ubi9-quarkus-micro-image:2.0
+# ----------------------------------------------------------------------
+# Étape 1: Builder - pour compiler et créer l'archive fast-jar Quarkus
+# ----------------------------------------------------------------------
+# Utilise une image Java/Maven complète pour le build. C'est l'image qui contient 'mvn'.
+FROM maven:3-eclipse-temurin-25-alpine AS builder
 
-# Set working directory
-WORKDIR /work/
+# Définit le répertoire de travail dans le conteneur
+WORKDIR /build
 
-# Copy the native executable and set permissions
-COPY --chown=1001:root --chmod=0755 target/*-runner /work/application
+# Copie le fichier POM et les dépendances (pour utiliser le cache Docker)
+COPY pom.xml .
+# Télécharge toutes les dépendances Maven (cette étape est mise en cache si le pom.xml ne change pas)
+RUN mvn dependency:go-offline
 
-# Expose the default Quarkus port
+# Copie le code source
+COPY src /build/src
+
+# Packaging de l'application Quarkus en fast-jar
+# Quarkus génère les fichiers nécessaires dans /target/quarkus-app
+RUN mvn package -DskipTests
+
+# ----------------------------------------------------------------------
+# Étape 2: Runner - pour exécuter l'application (image JRE minimale)
+# ----------------------------------------------------------------------
+# Utilise une image JRE/JDK minimaliste pour l'exécution (plus petite que le JDK complet)
+FROM eclipse-temurin:25-jre-alpine AS runner
+
+
+# Définit le port que l'application expose
 EXPOSE 8080
 
-# Run as non-root user
-USER 1001
+# Options JVM modernes pour de meilleures performances (G1GC, heap size, tuning)
+ENV JAVA_OPTS="-XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:InitialRAMPercentage=50.0 -XX:MaxRAMPercentage=80.0 -XX:+ExitOnOutOfMemoryError -Dfile.encoding=UTF-8"
 
-# Run the native executable with Quarkus host binding
-ENTRYPOINT ["/work/application", "-Dquarkus.http.host=0.0.0.0"]
+# Crée un répertoire non-root pour l'exécution
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+USER appuser
+
+# Définit le répertoire de travail
+WORKDIR /app
+
+
+# Copie les artefacts du builder (le fast-jar)
+# Le dossier 'quarkus-app' contient le jar principal et les bibliothèques
+COPY --from=builder /build/target/quarkus-app /app
+
+# Commande d'exécution avec options JVM
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar /app/quarkus-app/quarkus-run.jar"]
