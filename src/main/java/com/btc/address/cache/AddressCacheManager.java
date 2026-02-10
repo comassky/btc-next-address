@@ -1,86 +1,70 @@
 package com.btc.address.cache;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.quarkus.runtime.annotations.RegisterForReflection;
+import jakarta.annotation.PostConstruct;
+import jakarta.enterprise.context.ApplicationScoped;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
+import java.nio.file.*;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-
-import io.quarkus.runtime.annotations.RegisterForReflection;
-import jakarta.annotation.PostConstruct;
-import jakarta.enterprise.context.ApplicationScoped;
-
 @ApplicationScoped
 @RegisterForReflection
 public class AddressCacheManager {
-
-    // Chemin fixe : plus besoin de @ConfigProperty
     private static final String DATA_PATH = "/data";
-    private static final String CACHE_FILE_NAME = "address-cache.json";
-    
-    private final Path cacheFilePath = Paths.get(DATA_PATH, CACHE_FILE_NAME);
+    private static final String CACHE_FILE = "/data/address-cache.json";
+    private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+    private final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
 
-    private final ObjectMapper mapper = new ObjectMapper()
-            .registerModule(new JavaTimeModule())
-            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-
-    private Map<String, CacheEntry> cache;
+    @RegisterForReflection
+    public record CacheEntry(boolean used, java.time.Instant timestamp) {
+        public CacheEntry(boolean used) { this(used, java.time.Instant.now()); }
+    }
 
     @PostConstruct
     void init() {
         try {
-            // S'assure que /data existe au démarrage
             Files.createDirectories(Paths.get(DATA_PATH));
-            loadCache();
-        } catch (IOException e) {
-            System.err.println("CRITICAL: Cannot access /data. Cache will be lost on restart.");
-            this.cache = new ConcurrentHashMap<>();
+            Path path = Paths.get(CACHE_FILE);
+            if (Files.exists(path)) {
+                var type = mapper.getTypeFactory().constructMapType(Map.class, String.class, CacheEntry.class);
+                Map<String, CacheEntry> loaded = mapper.readValue(path.toFile(), type);
+                cache.putAll(loaded);
+                System.out.println("✅ Cache loaded: " + cache.size() + " entries.");
+            }
+        } catch (Exception e) {
+            System.err.println("⚠️ Cache empty or inaccessible: " + e.getMessage());
         }
     }
 
-    private synchronized void loadCache() {
-        this.cache = new ConcurrentHashMap<>();
-        if (!Files.exists(cacheFilePath)) {
-            System.out.println("No existing cache found at " + cacheFilePath + ". Starting fresh.");
-            return;
-        }
-
-        try {
-            var typeFactory = mapper.getTypeFactory();
-            Map<String, CacheEntry> loadedCache = mapper.readValue(cacheFilePath.toFile(),
-                    typeFactory.constructMapType(ConcurrentHashMap.class, String.class, CacheEntry.class));
-
-            Optional.ofNullable(loadedCache).ifPresent(this.cache::putAll);
-            System.out.println("Cache loaded: " + this.cache.size() + " entries.");
-        } catch (IOException e) {
-            System.err.println("Failed to load cache: " + e.getMessage());
-        }
+    public Optional<Boolean> getKnownStatus(String hash) {
+        return Optional.ofNullable(cache.get(hash)).map(CacheEntry::used);
     }
 
-    public synchronized void saveCache() {
-        try {
-            // Écriture atomique dans /data
-            Path tempFile = Files.createTempFile(cacheFilePath.getParent(), "cache-", ".json");
-            mapper.writerWithDefaultPrettyPrinter().writeValue(tempFile.toFile(), cache);
-            Files.move(tempFile, cacheFilePath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        } catch (IOException e) {
-            System.err.println("Failed to save cache to " + cacheFilePath + ": " + e.getMessage());
-        }
+    public void addEntries(Map<String, Boolean> newEntries) {
+        newEntries.forEach((hash, used) -> cache.put(hash, new CacheEntry(used)));
+        saveCache(); 
     }
 
     public void addEntry(String hash, boolean used) {
-        cache.put(hash, new CacheEntry(hash, used));
+        cache.put(hash, new CacheEntry(used));
         saveCache();
     }
 
-    public boolean isAddressUsed(String hash) {
-        return Optional.ofNullable(cache.get(hash)).map(CacheEntry::used).orElse(false);
+    private synchronized void saveCache() {
+        try {
+            Path tempFile = Files.createTempFile(Paths.get(DATA_PATH), "cache-", ".tmp");
+            try {
+                mapper.writerWithDefaultPrettyPrinter().writeValue(tempFile.toFile(), cache);
+                Files.move(tempFile, Paths.get(CACHE_FILE), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (IOException e) {
+                Files.deleteIfExists(tempFile);
+                throw e;
+            }
+        } catch (IOException e) {
+            System.err.println("❌ Cache save error: " + e.getMessage());
+        }
     }
 }
