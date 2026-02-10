@@ -1,7 +1,9 @@
 package com.btc.address.service;
 
+import java.util.ArrayList;
 import java.util.Base64;
-import java.util.Objects;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.IntStream;
 
 import org.bitcoinj.crypto.DeterministicKey;
@@ -32,34 +34,43 @@ public class AddressService {
             ? BIP84Deriver.generateSaltFromXpub(xpub) : salt;
 
         DeterministicKey externalChainKey = BIP84Deriver.createMasterKey(xpub);
-        int maxAttempts = 100;
+        
+        int batchSize = 20; // On vérifie 20 adresses par appel API
+        int currentStart = startIndex;
 
-        return IntStream.range(startIndex, startIndex + maxAttempts)
-                .mapToObj(i -> {
-                    try {
-                        BIP84Deriver.DerivedAddress derived = BIP84Deriver.deriveAddress(externalChainKey, i);
-                        String hash = BIP84Deriver.generateHash(derived.address, effectiveSalt);
+        // Limite de recherche à 100 adresses pour éviter les boucles infinies
+        while (currentStart < startIndex + 100) {
+            List<BIP84Deriver.DerivedAddress> batch = new ArrayList<>();
+            for (int i = 0; i < batchSize; i++) {
+                batch.add(BIP84Deriver.deriveAddress(externalChainKey, currentStart + i));
+            }
 
-                        if (cacheManager.isAddressUsed(hash)) {
-                            return null;
-                        }
+            List<String> addressStrings = batch.stream().map(d -> d.address).toList();
 
-                        boolean isUsed = blockchainChecker.isAddressUsed(derived.address);
-                        cacheManager.addEntry(hash, isUsed);
+            // Appel API groupé
+            Map<String, Boolean> usageMap = blockchainChecker.checkAddressesBatch(addressStrings);
 
-                        if (!isUsed) {
-                            // NEW: SVG generation instead of PNG
-                            String qrCode = generateQrCodeSvgBase64("bitcoin:" + derived.address);
-                            return new NextAddressResult(derived.address, derived.publicKey, i, qrCode, effectiveSalt, hash);
-                        }
-                    } catch (Exception e) {
-                        System.err.println("Error at index " + i + ": " + e.getMessage());
-                    }
-                    return null;
-                })
-                .filter(Objects::nonNull)
-                .findFirst()
-                .orElseThrow(() -> new RuntimeException("No unused address found after " + maxAttempts + " attempts"));
+            for (int i = 0; i < batch.size(); i++) {
+                BIP84Deriver.DerivedAddress derived = batch.get(i);
+                String hash = BIP84Deriver.generateHash(derived.address, effectiveSalt);
+
+                boolean isUsed = cacheManager.isAddressUsed(hash) || usageMap.getOrDefault(derived.address, true);
+
+                if (!isUsed) {
+                    // Cache l'état pour les futurs appels
+                    cacheManager.addEntry(hash, false);
+                    String qrCode = generateQrCodeSvgBase64("bitcoin:" + derived.address);
+                    return new NextAddressResult(derived.address, derived.publicKey, currentStart + i, qrCode, effectiveSalt, hash);
+                } else {
+                    cacheManager.addEntry(hash, true);
+                }
+            }
+            
+            currentStart += batchSize;
+            try { Thread.sleep(300); } catch (InterruptedException ignored) {}
+        }
+
+        throw new RuntimeException("Aucune adresse vierge trouvée dans les 100 prochaines adresses.");
     }
 
     private String generateQrCodeSvgBase64(String text) {

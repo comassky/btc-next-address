@@ -9,6 +9,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @ApplicationScoped
 public class BlockchainChecker {
@@ -16,96 +19,64 @@ public class BlockchainChecker {
             .connectTimeout(Duration.ofSeconds(10))
             .build();
     private final ObjectMapper mapper = new ObjectMapper();
-    
-    /**
-     * Checks if an address has at least one transaction (confirmed or unconfirmed).
-     * Uses multiple APIs in cascade for reliability.
-     */
-    public boolean isAddressUsed(String address) {
-        // 1. Try Mempool.space (Very reliable, no API key required)
+
+    public Map<String, Boolean> checkAddressesBatch(List<String> addresses) {
         try {
-            return checkMempoolSpace(address);
+            return checkBlockchairBatch(addresses);
         } catch (Exception e) {
-            System.err.println("Mempool.space error for " + address + ": " + e.getMessage());
-        }
-        
-        // 2. Fallback to Blockchair
-        try {
-            return checkBlockchair(address);
-        } catch (Exception e) {
-            System.err.println("Blockchair error for " + address + ": " + e.getMessage());
+            System.err.println("Fallback Blockchair -> Blockchain.info: " + e.getMessage());
         }
 
-        // 3. Fallback to Blockchain.info
         try {
-            return checkBlockchainInfo(address);
+            return checkBlockchainInfoBatch(addresses);
         } catch (Exception e) {
-            System.err.println("Blockchain.info error for " + address + ": " + e.getMessage());
+            System.err.println("Tous les services batch ont échoué: " + e.getMessage());
         }
-        
-        // If all APIs fail, throw exception to avoid false negatives
-        throw new RuntimeException("Unable to check address " + address + " (all APIs failed)");
+
+        throw new RuntimeException("Limite de débit atteinte sur toutes les APIs. Attendez 5 minutes.");
     }
 
-    private boolean checkMempoolSpace(String address) throws Exception {
-        String url = "https://mempool.space/api/address/" + address;
+    private Map<String, Boolean> checkBlockchairBatch(List<String> addresses) throws Exception {
+        String list = String.join(",", addresses);
+        // Utilisation de l'endpoint dashboard pour vérifier plusieurs adresses d'un coup
+        String url = "https://api.blockchair.com/bitcoin/dashboards/addresses/" + list + "?limit=0";
+
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
-                .GET()
-                .header("User-Agent", "BTC-Address-Checker/1.0")
-                .build();
-        
+                .header("User-Agent", "Quarkus-BTC-Scanner/1.0")
+                .GET().build();
+
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-        
+        Map<String, Boolean> results = new HashMap<>();
+
         if (response.statusCode() == 200) {
-            JsonNode root = mapper.readTree(response.body());
-            // Check confirmed transactions (chain_stats) and mempool (mempool_stats)
-            int chainTx = root.path("chain_stats").path("tx_count").asInt(0);
-            int mempoolTx = root.path("mempool_stats").path("tx_count").asInt(0);
-            return (chainTx + mempoolTx) > 0;
+            JsonNode data = mapper.readTree(response.body()).path("data");
+            for (String addr : addresses) {
+                // transaction_count > 0 signifie que l'adresse a été utilisée
+                int txCount = data.path(addr).path("address").path("transaction_count").asInt(0);
+                results.put(addr, txCount > 0);
+            }
+            return results;
         }
-        throw new RuntimeException("Status code: " + response.statusCode());
+        throw new RuntimeException("Blockchair status: " + response.statusCode());
     }
 
-    private boolean checkBlockchair(String address) throws Exception {
-        // Blockchair often has strict rate limits
-        Thread.sleep(200); 
-        String url = "https://api.blockchair.com/bitcoin/addresses?q=address(" + address + ")";
-        
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .GET()
-                .build();
-        
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-        
-        if (response.statusCode() == 200) {
-            JsonNode root = mapper.readTree(response.body());
-            JsonNode data = root.path("data").path(address);
-            if (data.isMissingNode()) return false;
-            
-            int txCount = data.path("transaction_count").asInt(0);
-            return txCount > 0;
-        }
-        throw new RuntimeException("Status code: " + response.statusCode());
-    }
+    private Map<String, Boolean> checkBlockchainInfoBatch(List<String> addresses) throws Exception {
+        String list = String.join("|", addresses);
+        String url = "https://blockchain.info/balance?active=" + list;
 
-    private boolean checkBlockchainInfo(String address) throws Exception {
-        // Using rawaddr to get n_tx. limit=0 to avoid loading txs.
-        String url = "https://blockchain.info/rawaddr/" + address + "?limit=0";
-        
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .GET()
-                .build();
-        
+        HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url)).GET().build();
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-        
+        Map<String, Boolean> results = new HashMap<>();
+
         if (response.statusCode() == 200) {
             JsonNode root = mapper.readTree(response.body());
-            int nTx = root.path("n_tx").asInt(0);
-            return nTx > 0;
+            for (String addr : addresses) {
+                int nTx = root.path(addr).path("n_tx").asInt(0);
+                results.put(addr, nTx > 0);
+            }
+            return results;
         }
-        throw new RuntimeException("Status code: " + response.statusCode());
+        throw new RuntimeException("Blockchain.info status: " + response.statusCode());
     }
 }
