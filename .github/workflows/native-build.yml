@@ -1,87 +1,32 @@
-name: Main / Docker Native (GraalVM)
+name: Build and Push Native Docker Image
 
 on:
   push:
-    branches: ["main"]
-    tags: ["*.*.*"]
+    branches: [ "main" ]
   pull_request:
-    branches: ["main"]
+    branches: [ "main" ]
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  GRAALVM_VERSION: "25"
 
 jobs:
-  build-native:
-    name: Build Native Image
+  build-and-push:
+    name: Build and Push Image
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-      id-token: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up GraalVM
-        uses: graalvm/setup-graalvm@v1
-        with:
-          java-version: ${{ env.GRAALVM_VERSION }}
-          distribution: "graalvm-community"
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          native-image-job-reports: "true"
-
-      - name: Set up Maven
-        uses: stCarolas/setup-maven@v5
-        with:
-          maven-version: "3.9.12"
-
-      - name: Cache Maven packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
-
-      - name: Cache Node.js modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            src/main/web/node_modules
-            ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('src/main/web/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
-      - name: Build Native Executable
-        run: |
-          mvn -B clean package -Pnative \
-            -DskipTests \
-            -Dquarkus.native.container-build=false \
-            -Dquarkus.native.native-image-xmx=6g \
-            -Dquarkus.native.additional-build-args="--verbose"
-        env:
-          MAVEN_OPTS: "-Xmx8g"
-
-      - name: Verify Native Executable
-        run: |
-          ls -lh target/*-runner
-          file target/*-runner
-
-      - name: Install cosign
-        if: github.event_name != 'pull_request'
-        uses: sigstore/cosign-installer@v4.0.0
-        with:
-          cosign-release: "v3.0.3"
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log into registry ${{ env.REGISTRY }}
+      - name: Log into GitHub Container Registry
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
@@ -95,36 +40,16 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            # If this is a tag (release), build latest and X.Y.Z
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
-            type=ref,event=tag
-            # Otherwise, build main
-            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix=,format=short
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
       - name: Build and push Docker image
-        id: build-and-push
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile.native
+          file: ./Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64
-
-      - name: Sign the published Docker image
-        if: ${{ github.event_name != 'pull_request' }}
-        env:
-          TAGS: ${{ steps.meta.outputs.tags }}
-          DIGEST: ${{ steps.build-and-push.outputs.digest }}
-        run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
-
-      - name: Upload Native Executable as Artifact
-        if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
-        with:
-          name: native-executable
-          path: target/*-runner
-          retention-days: 7
