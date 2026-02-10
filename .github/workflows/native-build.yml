@@ -43,6 +43,11 @@ jobs:
       - name: Build Native Image
         run: ./mvnw package -Dnative -DskipTests
 
+      - name: List target directory contents # Debugging step
+        run: |
+          echo "Listing contents of target/ directory:"
+          ls -R target
+
       - name: Upload Native Artifact
         uses: actions/upload-artifact@v4
         with:
