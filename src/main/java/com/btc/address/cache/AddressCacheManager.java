@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -24,7 +23,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @RegisterForReflection
 public class AddressCacheManager {
 
-    @ConfigProperty(name = "bitcoin.cache.path", defaultValue = "cache")
+    // On utilise /data par défaut pour le conteneur
+    @ConfigProperty(name = "bitcoin.cache.path", defaultValue = "/data")
     String cacheDirectoryPath;
 
     private static final String CACHE_FILE_NAME = "address-cache.json";
@@ -51,11 +51,11 @@ public class AddressCacheManager {
     void init() {
         try {
             Path cacheDir = Paths.get(cacheDirectoryPath);
-            Files.createDirectories(cacheDir); // Create directory if it doesn't exist
+            Files.createDirectories(cacheDir); 
             this.cacheFilePath = cacheDir.resolve(CACHE_FILE_NAME);
             loadCache();
         } catch (IOException e) {
-            System.err.println("Failed to create or access cache directory: " + cacheDirectoryPath + ". Cache will not be persisted. Error: " + e.getMessage());
+            System.err.println("CRITICAL: Failed to access /data. Cache will be volatile.");
             this.cache = new ConcurrentHashMap<>();
         }
     }
@@ -72,22 +72,21 @@ public class AddressCacheManager {
                     typeFactory.constructMapType(ConcurrentHashMap.class, String.class, CacheEntry.class));
 
             Optional.ofNullable(loadedCache).ifPresent(this.cache::putAll);
-            System.out.println("Loaded " + this.cache.size() + " entries from cache: " + cacheFilePath);
+            System.out.println("Cache loaded: " + this.cache.size() + " entries from " + cacheFilePath);
         } catch (IOException e) {
-            System.err.println("Failed to load cache from " + cacheFilePath + ". A new cache will be created. Error: " + e.getMessage());
+            System.err.println("Failed to load cache: " + e.getMessage());
         }
     }
 
     public synchronized void saveCache() {
-        if (cacheFilePath == null) {
-            return;
-        }
+        if (cacheFilePath == null) return;
         try {
+            // Utilise un fichier temporaire dans le même dossier pour l'atomicité
             Path tempFile = Files.createTempFile(cacheFilePath.getParent(), "cache-", ".json");
             mapper.writerWithDefaultPrettyPrinter().writeValue(tempFile.toFile(), cache);
             Files.move(tempFile, cacheFilePath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException e) {
-            System.err.println("Failed to save cache: " + e.getMessage());
+            System.err.println("Failed to save cache to /data: " + e.getMessage());
         }
     }
 
@@ -96,11 +95,7 @@ public class AddressCacheManager {
         saveCache();
     }
 
-    public Optional<CacheEntry> getEntry(String hash) {
-        return Optional.ofNullable(cache.get(hash));
-    }
-
     public boolean isAddressUsed(String hash) {
-        return getEntry(hash).map(CacheEntry::used).orElse(false);
+        return Optional.ofNullable(cache.get(hash)).map(CacheEntry::used).orElse(false);
     }
 }
