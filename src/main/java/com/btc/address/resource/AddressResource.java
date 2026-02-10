@@ -40,9 +40,6 @@ public class AddressResource {
     @POST
     @Path("/verify")
     public Response verify(VerifyRequest request) {
-        // Note: You should retrieve the 'xpub' from your secure config,
-        // not from the user's request, to ensure they are verifying against YOUR
-        // wallet.
         var result = addressService.verifyAddressOwnership(xpub, request.address());
         return Response.ok(result).build();
     }
