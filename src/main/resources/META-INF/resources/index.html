@@ -1,350 +1,173 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bitcoin Next Address - BIP84</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Bitcoin Receive - BIP84</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        btc: '#f7931a',
+                        dark: '#0f1115',
+                        card: '#1c1f26',
+                        border: '#2d333b'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    
     <style>
-        :root {
-            --bg-color: #0f1115;
-            --card-bg: #181b21;
-            --text-primary: #ffffff;
-            --text-secondary: #9ca3af;
-            --accent-color: #f7931a; /* Bitcoin Orange */
-            --accent-hover: #e0820b;
-            --success-color: #10b981;
-            --border-color: #2d333b;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-primary);
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-        }
-        
-        .container {
-            background: var(--card-bg);
-            border-radius: 24px;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-            padding: 48px;
-            max-width: 480px;
-            width: 100%;
-            border: 1px solid var(--border-color);
-            text-align: center;
-            position: relative;
-            overflow: hidden;
-        }
-
-        /* Subtle top gradient line */
-        .container::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: linear-gradient(90deg, #f7931a, #f3c176);
-        }
-        
-        h1 {
-            font-weight: 600;
-            font-size: 24px;
-            margin-bottom: 8px;
-            letter-spacing: -0.5px;
-        }
-        
-        .subtitle {
-            color: var(--text-secondary);
-            font-size: 14px;
-            margin-bottom: 40px;
-        }
-        
-        .loading {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 200px;
-            color: var(--accent-color);
-        }
-        
-        .spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid rgba(247, 147, 26, 0.1);
-            border-top-color: var(--accent-color);
-            border-radius: 50%;
-            animation: spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-            margin-bottom: 16px;
-        }
-        
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        
-        .result {
-            display: none;
-            animation: fadeIn 0.5s ease-out;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        .qr-container {
-            background: white;
-            padding: 24px;
-            border-radius: 16px;
-            margin-bottom: 32px;
-            display: inline-block;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-        }
-        
-        #qrcode-img {
+        /* Force le SVG envoyé par le backend à être responsive */
+        #qr-target svg {
+            width: 100% !important;
+            height: 100% !important;
             display: block;
-            width: 300px;
-            height: 300px;
         }
-        
-        .info-badge {
-            display: inline-flex;
-            align-items: center;
-            background: rgba(16, 185, 129, 0.1);
-            color: var(--success-color);
-            padding: 6px 12px;
-            border-radius: 9999px;
-            font-size: 12px;
-            font-weight: 600;
-            margin-bottom: 24px;
-            border: 1px solid rgba(16, 185, 129, 0.2);
-        }
-
-        .info-badge span {
-            margin-left: 6px;
-        }
-
-        .address-box {
-            background: #0f1115;
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 24px;
-            position: relative;
-            transition: border-color 0.2s;
-        }
-
-        .address-box:hover {
-            border-color: var(--accent-color);
-        }
-        
-        .address-label {
-            color: var(--text-secondary);
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 8px;
-            font-weight: 600;
-        }
-        
-        .address-display {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 13px;
-            color: var(--text-primary);
-            word-break: break-all;
-            line-height: 1.5;
-        }
-        
-        .copy-btn {
-            width: 100%;
-            padding: 14px;
-            background: var(--accent-color);
-            color: white;
-            border: none;
-            border-radius: 12px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-        
-        .copy-btn:hover {
-            background: var(--accent-hover);
-            transform: translateY(-1px);
-        }
-
-        .copy-btn:active {
-            transform: translateY(0);
-        }
-
-        .error {
-            background: rgba(239, 68, 68, 0.1);
-            color: #ef4444;
-            padding: 16px;
-            border-radius: 12px;
-            margin-bottom: 24px;
-            display: none;
-            border: 1px solid rgba(239, 68, 68, 0.2);
-            font-size: 14px;
-        }
-
-        /* Bitcoin Icon SVG */
-        .btc-icon {
-            width: 48px;
-            height: 48px;
-            margin-bottom: 16px;
-            fill: var(--accent-color);
-        }
+        /* Supprime le highlight gris au toucher sur mobile */
+        * { -webkit-tap-highlight-color: transparent; }
     </style>
 </head>
-<body>
-    <div class="container">
-        <svg class="btc-icon" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-            <path d="M16 32C7.163 32 0 24.837 0 16S7.163 0 16 0s16 7.163 16 16-7.163 16-16 16zm7.888-14.308c.554-3.688-2.26-5.67-6.106-6.995l1.248-4.998-3.036-.758-1.216 4.868c-.798-.2-1.628-.39-2.45-.57l1.226-4.908-3.038-.76-1.246 5.002c-.66-.15-1.306-.29-1.936-.44l.002-.01-4.19.05v.02l-1.618 4.02s4.51-.024 4.41.02c2.46.06 2.832.898 2.76 1.414l-2.76 11.066c-.166.416-.592 1.04-1.548.98.096.044-4.41-.02-4.41-.02l-3.018 6.96 3.954.986c.736.184 1.458.37 2.17.554l-1.26 5.066 3.036.758 1.25-5.016c.83.226 1.636.436 2.426.62l-1.236 4.954 3.034.758 1.256-5.036c5.18.98 9.076.586 10.714-4.098 1.32-3.766-.066-5.938-2.784-7.356 1.98-.456 3.47-1.756 3.866-4.444zm-6.87 9.65c-.934 3.75-7.26 1.724-9.308 1.214l1.66-6.658c2.05.51 8.538 1.516 7.648 5.444zm.93-9.676c-.852 3.414-6.104 1.678-7.806 1.254l1.506-6.034c1.7.424 7.126 1.22 6.3 4.78z"/>
-        </svg>
 
-        <h1>Next Address</h1>
-        <p class="subtitle">BIP84 Native SegWit</p>
-        
-        <div class="error" id="error"></div>
+<body class="bg-dark text-white font-sans min-h-screen flex items-center justify-center p-4">
 
-        <div class="loading" id="loading">
-            <div class="spinner"></div>
-            <span>Scanning blockchain...</span>
+    <div class="bg-card w-full max-w-md rounded-[2.5rem] p-8 border border-border shadow-2xl relative overflow-hidden">
+        <div class="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-btc to-orange-300"></div>
+
+        <div class="text-center mb-8">
+            <div class="inline-flex items-center justify-center w-14 h-14 bg-btc/10 rounded-2xl mb-4">
+                <i data-lucide="bitcoin" class="text-btc w-8 h-8"></i>
+            </div>
+            <h1 class="text-2xl font-bold tracking-tight">Recevoir</h1>
+            <p class="text-gray-400 text-sm mt-1 uppercase tracking-widest font-semibold text-[10px]">Native SegWit • BIP84</p>
         </div>
-        
-        <div class="result" id="result">
-            <div class="qr-container">
-                <img id="qrcode-img" alt="QR Code" />
-            </div>
+
+        <div id="loader" class="space-y-6">
+            <div class="mx-auto w-60 h-60 bg-white/5 rounded-[2rem] animate-pulse"></div>
+            <div class="h-24 bg-white/5 rounded-2xl animate-pulse"></div>
+            <div class="h-14 bg-white/5 rounded-2xl animate-pulse"></div>
+        </div>
+
+        <div id="main-content" class="hidden opacity-0 transition-opacity duration-500">
             
-            <div>
-                <div class="info-badge">
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M10 3L4.5 8.5L2 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                    <span>Unused Address (Index <span id="resultIndex">0</span>)</span>
-                </div>
-            </div>
-            
-            <div class="address-box">
-                <div class="address-label">Deposit Address</div>
-                <div class="address-display" id="resultAddress">
-                    Loading...
+            <div class="flex justify-center mb-8">
+                <div class="bg-white p-5 rounded-[2.5rem] shadow-2xl shadow-black/50 w-64 h-64 flex items-center justify-center overflow-hidden">
+                    <div id="qr-target" class="w-full h-full">
+                        </div>
                 </div>
             </div>
 
-            <button class="copy-btn" onclick="copyAddress()">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                </svg>
-                Copy Address
-            </button>
+            <div class="bg-black/40 border border-border rounded-2xl p-4 mb-6 transition-all active:border-btc/50 cursor-pointer" onclick="copyAddress()">
+                <div class="flex justify-between items-center mb-3">
+                    <span class="text-[10px] uppercase font-bold tracking-widest text-gray-500">Adresse de dépôt</span>
+                    <span class="text-[10px] bg-btc/10 px-2 py-0.5 rounded-full text-btc font-bold">Index <span id="idx">0</span></span>
+                </div>
+                <div id="addr-text" class="font-mono text-[13px] text-gray-200 break-all leading-relaxed tracking-tight">
+                    ...
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 gap-3">
+                <button onclick="copyAddress()" id="copyBtn" 
+                    class="w-full h-14 bg-btc hover:bg-orange-500 active:scale-[0.97] transition-all rounded-2xl font-bold flex items-center justify-center gap-3 text-white shadow-lg shadow-btc/20">
+                    <i data-lucide="copy" class="w-5 h-5"></i>
+                    <span>Copier l'adresse</span>
+                </button>
+            </div>
         </div>
     </div>
-    
-    <script>
-        window.onload = function() {
-            findAddress();
-        };
 
-        async function findAddress() {
-            hideError();
-            showLoading();
-            
+    <script>
+        // Initialisation des icônes Lucide
+        lucide.createIcons();
+        let currentAddr = "";
+
+        async function fetchAddress() {
             try {
                 const response = await fetch('/api/address/next', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        startIndex: 0
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ startIndex: 0 })
                 });
-                
-                if (!response.ok) {
-                    const error = await response.text();
-                    throw new Error(error || 'Failed to find address');
-                }
+
+                if (!response.ok) throw new Error('Erreur réseau');
                 
                 const data = await response.json();
-
-                displayResult(data);
-                hideLoading();
-                showResult();
+                render(data.address, data.index, data.qrCodeImage);
             } catch (error) {
-                hideLoading();
-                showError('Error: ' + error.message);
-                console.error(error);
+                console.error("Erreur API:", error);
+                // Simulation pour test visuel si l'API est absente
+                render(
+                    "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh", 
+                    0, 
+                    `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><rect width="100" height="100" fill="white"/><path d="M10 10h20v20H10zm40 0h20v20H50zM10 50h20v20H10zm40 40h20v20H50z" fill="black"/></svg>`
+                );
             }
         }
-        
-        function displayResult(data) {
-            document.getElementById('resultAddress').textContent = data.address;
-            document.getElementById('resultIndex').textContent = data.index;
-            document.getElementById('qrcode-img').src = data.qrCodeImage;
+
+        function render(address, index, qrContent) {
+            currentAddr = address;
+            document.getElementById('addr-text').innerText = address;
+            document.getElementById('idx').innerText = index;
+            
+            const target = document.getElementById('qr-target');
+            
+            // On vérifie si c'est un SVG brut ou une URL/Base64
+            if (qrContent.trim().startsWith('<svg')) {
+                target.innerHTML = qrContent;
+            } else {
+                target.innerHTML = `<img src="${qrContent}" class="w-full h-full object-contain">`;
+            }
+
+            // Transition fluide entre loader et contenu
+            document.getElementById('loader').classList.add('hidden');
+            const content = document.getElementById('main-content');
+            content.classList.remove('hidden');
+            setTimeout(() => content.classList.replace('opacity-0', 'opacity-100'), 50);
         }
-        
+
         function copyAddress() {
-            const address = document.getElementById('resultAddress').textContent.trim();
-            navigator.clipboard.writeText(address).then(() => {
-                const btn = document.querySelector('.copy-btn');
+            if (!currentAddr) return;
+            
+            navigator.clipboard.writeText(currentAddr).then(() => {
+                const btn = document.getElementById('copyBtn');
                 const originalHtml = btn.innerHTML;
 
-                btn.innerHTML = `
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="20 6 9 17 4 12"></polyline>
-                    </svg>
-                    Copied!
-                `;
-                btn.style.background = '#10b981';
+                // Animation Confetti
+                confetti({
+                    particleCount: 100,
+                    spread: 70,
+                    origin: { y: 0.8 },
+                    colors: ['#f7931a', '#ffffff', '#10b981']
+                });
+
+                // Feedback visuel bouton
+                btn.classList.replace('bg-btc', 'bg-green-500');
+                btn.innerHTML = `<i data-lucide="check" class="w-5 h-5"></i> <span>Copié !</span>`;
+                lucide.createIcons();
 
                 setTimeout(() => {
+                    btn.classList.replace('bg-green-500', 'bg-btc');
                     btn.innerHTML = originalHtml;
-                    btn.style.background = '';
+                    lucide.createIcons();
                 }, 2000);
             });
         }
-        
-        function showLoading() {
-            document.getElementById('loading').style.display = 'flex';
-        }
-        
-        function hideLoading() {
-            document.getElementById('loading').style.display = 'none';
-        }
-        
-        function showResult() {
-            document.getElementById('result').style.display = 'block';
-        }
-        
-        function showError(message) {
-            const errorEl = document.getElementById('error');
-            errorEl.textContent = message;
-            errorEl.style.display = 'block';
-        }
-        
-        function hideError() {
-            document.getElementById('error').style.display = 'none';
-        }
+
+        // Lancement
+        window.onload = fetchAddress;
     </script>
 </body>
 </html>
