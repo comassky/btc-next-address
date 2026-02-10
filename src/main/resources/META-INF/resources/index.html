@@ -29,21 +29,23 @@
     </script>
     
     <style>
-        #qr-target svg {
+        /* Ensures any injected SVG fills the container */
+        #qr-target svg, #qr-target img {
             width: 100% !important;
             height: 100% !important;
             display: block;
         }
         * { -webkit-tap-highlight-color: transparent; }
+        .no-select { user-select: none; }
     </style>
 </head>
 
 <body class="bg-dark text-white font-sans min-h-screen flex items-center justify-center p-4">
 
-    <div class="bg-card w-full max-w-md rounded-[2.5rem] p-8 border border-border shadow-2xl relative overflow-hidden">
+    <div class="bg-card w-full max-w-md rounded-[2.5rem] p-6 sm:p-8 border border-border shadow-2xl relative overflow-hidden">
         <div class="absolute top-0 left-0 right-0 h-1.5 bg-btc"></div>
 
-        <div class="text-center mb-8">
+        <div class="text-center mb-6 sm:mb-8">
             <div class="inline-flex items-center justify-center w-14 h-14 bg-btc/10 rounded-2xl mb-4">
                 <i data-lucide="bitcoin" class="text-btc w-8 h-8"></i>
             </div>
@@ -53,36 +55,46 @@
 
         <div id="loader" class="space-y-6">
             <div class="mx-auto w-60 h-60 bg-white/5 rounded-[2rem] animate-pulse"></div>
-            <div class="h-24 bg-white/5 rounded-2xl animate-pulse"></div>
+            <div class="h-28 bg-white/5 rounded-2xl animate-pulse"></div>
         </div>
 
         <div id="main-content" class="hidden opacity-0 transition-opacity duration-300">
             
             <div class="flex justify-center mb-8">
                 <div class="bg-white p-5 rounded-[2.5rem] shadow-2xl shadow-black/50 w-64 h-64 flex items-center justify-center overflow-hidden">
-                    <div id="qr-target" class="w-full h-full"></div>
+                    <div id="qr-target" class="w-full h-full flex items-center justify-center">
+                        </div>
                 </div>
             </div>
 
-            <button onclick="copyAddress()" class="w-full text-left bg-black/40 border border-border rounded-2xl p-5 transition-all hover:bg-black/60 active:border-btc group outline-none">
-                <div class="flex justify-between items-center mb-3">
-                    <span class="text-[10px] uppercase font-bold tracking-widest text-gray-500">Deposit Address (Click to copy)</span>
-                    <span class="text-[10px] bg-btc/10 px-2 py-0.5 rounded-full text-btc font-bold">Index <span id="idx">0</span></span>
+            <button onclick="copyAddress()" class="no-select w-full text-left bg-black/40 border border-border rounded-2xl p-4 sm:p-5 transition-all hover:bg-black/60 active:border-btc group outline-none relative overflow-hidden">
+                
+                <div class="flex justify-between items-center mb-3 text-[10px] uppercase font-bold tracking-widest">
+                    <span class="text-gray-500">Deposit Address</span>
+                    <span class="bg-btc/10 px-2 py-0.5 rounded-full text-btc">Index <span id="idx">0</span></span>
                 </div>
-                <div class="flex items-start gap-3">
-                    <div id="addr-text" class="font-mono text-[13px] text-gray-200 break-all leading-relaxed tracking-tight flex-1">
+
+                <div class="flex items-start gap-4">
+                    <div id="addr-text" class="font-mono text-[12px] sm:text-[13px] text-gray-200 break-all leading-relaxed tracking-tight flex-1">
                         ...
                     </div>
-                    <i data-lucide="copy" id="copy-icon" class="w-4 h-4 text-gray-500 mt-1 group-hover:text-btc transition-colors"></i>
+                    <div class="flex-shrink-0 pt-1">
+                        <i data-lucide="copy" id="copy-icon" class="w-5 h-5 text-gray-500 group-hover:text-btc transition-colors"></i>
+                    </div>
                 </div>
-                <div id="copy-status" class="hidden text-green-500 text-[10px] font-bold mt-2 uppercase tracking-widest">
-                    Address copied to clipboard
+
+                <div id="copy-status" class="hidden absolute inset-0 bg-btc flex flex-col items-center justify-center gap-1 animate-in fade-in zoom-in duration-200">
+                    <i data-lucide="check-circle-2" class="w-6 h-6 text-white"></i>
+                    <span class="text-white text-[10px] font-bold uppercase tracking-widest">Copied to clipboard</span>
                 </div>
             </button>
+            
+            <p class="text-center text-gray-500 text-[10px] mt-4 uppercase tracking-widest font-medium italic">Tap the address to copy</p>
         </div>
     </div>
 
     <script>
+        // Initialize Icons
         lucide.createIcons();
         let currentAddr = "";
 
@@ -100,7 +112,7 @@
                 render(data.address, data.index, data.qrCodeImage);
             } catch (error) {
                 console.error("API Error:", error);
-                // No fallback data rendered here anymore
+                // Fail-safe: You could add a retry button here
             }
         }
 
@@ -110,12 +122,18 @@
             document.getElementById('idx').innerText = index;
             
             const target = document.getElementById('qr-target');
-            if (qrContent.trim().startsWith('<svg')) {
+            
+            // Handle Base64 SVG (starts with data:) or raw SVG string
+            if (qrContent.startsWith('data:')) {
+                target.innerHTML = `<img src="${qrContent}" alt="BTC QR Code" class="w-full h-full object-contain">`;
+            } else if (qrContent.trim().startsWith('<svg')) {
                 target.innerHTML = qrContent;
             } else {
+                // Fallback for plain image URLs
                 target.innerHTML = `<img src="${qrContent}" class="w-full h-full object-contain">`;
             }
 
+            // UI Transitions
             document.getElementById('loader').classList.add('hidden');
             const content = document.getElementById('main-content');
             content.classList.remove('hidden');
@@ -127,18 +145,16 @@
             
             navigator.clipboard.writeText(currentAddr).then(() => {
                 const status = document.getElementById('copy-status');
-                const icon = document.getElementById('copy-icon');
-                
                 status.classList.remove('hidden');
-                icon.classList.add('text-green-500');
 
+                // Hide success message after 1.5 seconds
                 setTimeout(() => {
                     status.classList.add('hidden');
-                    icon.classList.remove('text-green-500');
-                }, 2000);
+                }, 1500);
             });
         }
 
+        // Start fetch on load
         window.onload = fetchAddress;
     </script>
 </body>
