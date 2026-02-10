@@ -22,6 +22,15 @@
                     fontFamily: {
                         sans: ['Inter', 'sans-serif'],
                         mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    keyframes: {
+                        'slide-up': {
+                            '0%': { transform: 'translateY(10px)', opacity: '0' },
+                            '100%': { transform: 'translateY(0)', opacity: '1' },
+                        }
+                    },
+                    animation: {
+                        'slide-up': 'slide-up 0.3s ease-out forwards',
                     }
                 }
             }
@@ -29,72 +38,64 @@
     </script>
     
     <style>
-        /* Ensures any injected SVG fills the container */
-        #qr-target svg, #qr-target img {
-            width: 100% !important;
-            height: 100% !important;
-            display: block;
-        }
+        #qr-target svg, #qr-target img { width: 100%; height: 100%; display: block; }
         * { -webkit-tap-highlight-color: transparent; }
-        .no-select { user-select: none; }
+        .press-effect { transition: transform 0.1s ease; }
+        .press-effect:active { transform: scale(0.97); }
     </style>
 </head>
 
 <body class="bg-dark text-white font-sans min-h-screen flex items-center justify-center p-4">
 
-    <div class="bg-card w-full max-w-md rounded-[2.5rem] p-6 sm:p-8 border border-border shadow-2xl relative overflow-hidden">
+    <div class="bg-card w-full max-w-xl rounded-[2.5rem] p-6 sm:p-10 border border-border shadow-2xl relative overflow-hidden">
         <div class="absolute top-0 left-0 right-0 h-1.5 bg-btc"></div>
 
-        <div class="text-center mb-6 sm:mb-8">
-            <div class="inline-flex items-center justify-center w-14 h-14 bg-btc/10 rounded-2xl mb-4">
-                <i data-lucide="bitcoin" class="text-btc w-8 h-8"></i>
-            </div>
-            <h1 class="text-2xl font-bold tracking-tight">Receive Bitcoin</h1>
-            <p class="text-gray-400 text-sm mt-1 uppercase tracking-widest font-semibold text-[10px]">Native SegWit • BIP84</p>
-        </div>
-
-        <div id="loader" class="space-y-6">
-            <div class="mx-auto w-60 h-60 bg-white/5 rounded-[2rem] animate-pulse"></div>
-            <div class="h-28 bg-white/5 rounded-2xl animate-pulse"></div>
-        </div>
-
-        <div id="main-content" class="hidden opacity-0 transition-opacity duration-300">
-            
-            <div class="flex justify-center mb-8">
-                <div class="bg-white p-5 rounded-[2.5rem] shadow-2xl shadow-black/50 w-64 h-64 flex items-center justify-center overflow-hidden">
-                    <div id="qr-target" class="w-full h-full flex items-center justify-center">
-                        </div>
+        <div class="flex flex-col sm:flex-row items-center justify-between mb-8 gap-4">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 bg-btc/10 rounded-xl flex items-center justify-center">
+                    <i data-lucide="bitcoin" class="text-btc w-7 h-7"></i>
+                </div>
+                <div class="text-left">
+                    <h1 class="text-xl font-bold tracking-tight">Receive Bitcoin</h1>
+                    <p class="text-gray-500 text-[10px] uppercase tracking-widest font-bold">Native SegWit • BIP84</p>
                 </div>
             </div>
+            <div class="bg-white/5 border border-border px-4 py-2 rounded-full">
+                <span class="text-[10px] text-gray-400 uppercase font-bold tracking-widest">Index #<span id="idx" class="text-btc">0</span></span>
+            </div>
+        </div>
 
-            <button onclick="copyAddress()" class="no-select w-full text-left bg-black/40 border border-border rounded-2xl p-4 sm:p-5 transition-all hover:bg-black/60 active:border-btc group outline-none relative overflow-hidden">
+        <div id="loader" class="flex flex-col items-center gap-6">
+            <div class="w-64 h-64 bg-white/5 rounded-[2rem] animate-pulse"></div>
+            <div class="w-full h-16 bg-white/5 rounded-2xl animate-pulse"></div>
+        </div>
+
+        <div id="main-content" class="hidden opacity-0 transition-opacity duration-500">
+            <div class="flex flex-col items-center">
                 
-                <div class="flex justify-between items-center mb-3 text-[10px] uppercase font-bold tracking-widest">
-                    <span class="text-gray-500">Deposit Address</span>
-                    <span class="bg-btc/10 px-2 py-0.5 rounded-full text-btc">Index <span id="idx">0</span></span>
+                <div class="bg-white p-6 rounded-[2.5rem] shadow-2xl shadow-black/50 mb-10 w-64 h-64">
+                    <div id="qr-target"></div>
                 </div>
 
-                <div class="flex items-start gap-4">
-                    <div id="addr-text" class="font-mono text-[12px] sm:text-[13px] text-gray-200 break-all leading-relaxed tracking-tight flex-1">
-                        ...
-                    </div>
-                    <div class="flex-shrink-0 pt-1">
-                        <i data-lucide="copy" id="copy-icon" class="w-5 h-5 text-gray-500 group-hover:text-btc transition-colors"></i>
+                <div class="w-full relative group">
+                    <button onclick="copyAddress()" class="press-effect w-full bg-black/40 border border-border hover:border-btc/50 rounded-2xl p-5 transition-colors outline-none">
+                        <div class="flex items-center justify-between gap-4">
+                            <span id="addr-text" class="font-mono text-[11px] sm:text-[14px] text-gray-200 truncate flex-1 tracking-tight">...</span>
+                            <i data-lucide="copy" id="copy-icon" class="w-5 h-5 text-gray-500 group-hover:text-btc transition-colors"></i>
+                        </div>
+                    </button>
+
+                    <div id="copy-toast" class="hidden absolute -top-12 left-1/2 -translate-x-1/2 bg-btc text-white text-[10px] font-bold uppercase tracking-widest px-4 py-2 rounded-full shadow-lg animate-slide-up">
+                        Copied to clipboard
                     </div>
                 </div>
 
-                <div id="copy-status" class="hidden absolute inset-0 bg-btc flex flex-col items-center justify-center gap-1 animate-in fade-in zoom-in duration-200">
-                    <i data-lucide="check-circle-2" class="w-6 h-6 text-white"></i>
-                    <span class="text-white text-[10px] font-bold uppercase tracking-widest">Copied to clipboard</span>
-                </div>
-            </button>
-            
-            <p class="text-center text-gray-500 text-[10px] mt-4 uppercase tracking-widest font-medium italic">Tap the address to copy</p>
+                <p class="text-gray-500 text-[10px] mt-6 uppercase tracking-[0.2em] font-medium">Verified Deposit Address</p>
+            </div>
         </div>
     </div>
 
     <script>
-        // Initialize Icons
         lucide.createIcons();
         let currentAddr = "";
 
@@ -105,35 +106,23 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ startIndex: 0 })
                 });
-
-                if (!response.ok) throw new Error('Network error');
-                
                 const data = await response.json();
                 render(data.address, data.index, data.qrCodeImage);
-            } catch (error) {
-                console.error("API Error:", error);
-                // Fail-safe: You could add a retry button here
-            }
+            } catch (e) { console.error(e); }
         }
 
         function render(address, index, qrContent) {
             currentAddr = address;
             document.getElementById('addr-text').innerText = address;
             document.getElementById('idx').innerText = index;
-            
             const target = document.getElementById('qr-target');
-            
-            // Handle Base64 SVG (starts with data:) or raw SVG string
+
             if (qrContent.startsWith('data:')) {
-                target.innerHTML = `<img src="${qrContent}" alt="BTC QR Code" class="w-full h-full object-contain">`;
-            } else if (qrContent.trim().startsWith('<svg')) {
-                target.innerHTML = qrContent;
+                target.innerHTML = `<img src="${qrContent}" alt="QR">`;
             } else {
-                // Fallback for plain image URLs
-                target.innerHTML = `<img src="${qrContent}" class="w-full h-full object-contain">`;
+                target.innerHTML = qrContent;
             }
 
-            // UI Transitions
             document.getElementById('loader').classList.add('hidden');
             const content = document.getElementById('main-content');
             content.classList.remove('hidden');
@@ -142,19 +131,21 @@
 
         function copyAddress() {
             if (!currentAddr) return;
-            
             navigator.clipboard.writeText(currentAddr).then(() => {
-                const status = document.getElementById('copy-status');
-                status.classList.remove('hidden');
-
-                // Hide success message after 1.5 seconds
+                const toast = document.getElementById('copy-toast');
+                const icon = document.getElementById('copy-icon');
+                
+                // Visual feedback
+                toast.classList.remove('hidden');
+                icon.classList.add('text-btc');
+                
                 setTimeout(() => {
-                    status.classList.add('hidden');
-                }, 1500);
+                    toast.classList.add('hidden');
+                    icon.classList.remove('text-btc');
+                }, 2000);
             });
         }
 
-        // Start fetch on load
         window.onload = fetchAddress;
     </script>
 </body>
