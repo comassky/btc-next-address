@@ -7,24 +7,15 @@ COPY pom.xml /code/
 RUN chmod +x /code/mvnw
 RUN ./mvnw -B org.apache.maven.plugins:maven-dependency-plugin:3.1.2:go-offline
 COPY src /code/src
-RUN ./mvnw package -Dnative -Dquarkus.native.native-image-xmx=4g
+RUN ./mvnw package -Dnative
 
-FROM registry.access.redhat.com/ubi9/ubi
+FROM quay.io/quarkus/ubi9-quarkus-micro-image:2.0
 WORKDIR /work/
-RUN dnf install -y \
-    freetype \
-    fontconfig \
-    libX11 \
-    libXext \
-    libXrender \
-    libXtst \
-    && dnf clean all
-
 COPY --from=build /code/target/*-runner /work/application
 RUN chown 1001 /work && chmod "g+rwX" /work && chown 1001:root /work
 
 USER 1001
 EXPOSE 8080
 
-ENV LD_LIBRARY_PATH=/usr/lib64
-CMD ["./application", "-Dquarkus.http.host=0.0.0.0", "-Djava.awt.headless=true"]
+# Plus besoin de -Djava.awt.headless=true !
+CMD ["./application", "-Dquarkus.http.host=0.0.0.0"]
