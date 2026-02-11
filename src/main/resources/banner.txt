@@ -1,4 +1,4 @@
-${ANSI_BOLD}${ANSI_FG_YELLOW}
+%d{BRIGHT_YELLOW}
   ██████╗ ████████╗ ██████╗    ███╗   ██╗███████╗██╗  ██╗████████╗
   ██╔══██╗╚══██╔══╝██╔════╝    ████╗  ██║██╔════╝╚██╗██╔╝╚══██╔══╝
   ██████╔╝   ██║   ██║         ██╔██╗ ██║█████╗   ╚███╔╝    ██║
@@ -6,7 +6,7 @@ ${ANSI_BOLD}${ANSI_FG_YELLOW}
   ██████╔╝   ██║   ╚██████╗    ██║ ╚████║███████╗██╔╝ ██╗   ██║
   ╚═════╝    ╚═╝    ╚═════╝    ╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝   ╚═╝
                                        NEXT ADDRESS SERVICE
-${ANSI_RESET}
-${ANSI_FG_CYAN}  >> Version: ${project.version}
+%d{CYAN}
+  >> Version: 1.0.0
   >> Cache:   ${bitcoin.cache.path}
-${ANSI_RESET}
+%d{RESET}
