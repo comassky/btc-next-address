@@ -19,7 +19,7 @@ public class AddressResource {
     AddressService addressService;
 
     @ConfigProperty(name = "bitcoin.xpub")
-    Optional<String> xpub; // Modern way to handle optional configuration
+    Optional<String> xpub;
 
     @POST
     @Path("/next")
@@ -47,15 +47,5 @@ public class AddressResource {
                 .map(result -> Response.ok(result).build())
                 .orElseGet(() -> Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                         .entity("Server configuration error").build());
-    }
-
-    @GET
-    @Path("/health")
-    @RunOnVirtualThread
-    public HealthResponse health() {
-        // Using unnamed variable '_' as the xpub value is not needed for the boolean check
-        return xpub.filter(key -> !key.isBlank())
-                .map(_ -> new HealthResponse("Address service is ready", true))
-                .orElse(new HealthResponse("Address service not configured", false));
     }
 }

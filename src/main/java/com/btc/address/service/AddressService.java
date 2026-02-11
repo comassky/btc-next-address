@@ -1,12 +1,10 @@
 package com.btc.address.service;
 
 import java.util.*;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.nio.charset.StandardCharsets;
 
 import com.btc.address.resource.AddressData;
-import org.bitcoinj.crypto.DeterministicKey;
 import com.btc.address.bitcoin.BIP84Deriver;
 import com.btc.address.blockchain.BlockchainChecker;
 import com.btc.address.cache.AddressCacheManager;
@@ -18,15 +16,16 @@ import com.google.zxing.qrcode.QRCodeWriter;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.bitcoinj.crypto.DeterministicKey;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 @ApplicationScoped
 public class AddressService {
 
-    @Inject 
+    @Inject
     BlockchainChecker blockchainChecker;
-    
-    @Inject 
+
+    @Inject
     AddressCacheManager cacheManager;
 
     @ConfigProperty(name = "bitcoin.gap-limit")
@@ -36,7 +35,7 @@ public class AddressService {
     public record VerificationResult(boolean valid, int index) {}
 
     /**
-     * Verifies if a target address belongs to a given xpub using parallelized derivation.
+     * Verifies if a specific address belongs to a provided xpub.
      */
     public VerificationResult verifyAddressOwnership(String xpub, String targetAddress) {
         if (targetAddress == null || targetAddress.isBlank()) {
@@ -46,7 +45,7 @@ public class AddressService {
         final var masterKey = BIP84Deriver.createMasterKey(xpub);
 
         return IntStream.range(0, gapLimit)
-                .parallel() // Leverages multiple CPU cores for heavy SECP256K1 crypto
+                .parallel()
                 .mapToObj(i -> new VerificationResult(targetAddress.equals(BIP84Deriver.deriveAddress(masterKey, i).address()), i))
                 .filter(VerificationResult::valid)
                 .findFirst()
@@ -54,106 +53,144 @@ public class AddressService {
     }
 
     /**
-     * Finds the next unused Bitcoin address using a high-performance batching strategy.
+     * Main entry point to find the next available Bitcoin address.
      */
     public NextAddressResult findNextUnusedAddress(String xpub, int startIndex, String salt) {
-        final String effectiveSalt = (salt == null || salt.isBlank())
-                ? BIP84Deriver.generateSaltFromXpub(xpub) : salt;
-
+        final String effectiveSalt = getEffectiveSalt(xpub, salt);
         final var masterKey = BIP84Deriver.createMasterKey(xpub);
         final int batchSize = 20;
 
-        // Iterate through address blocks until the gap limit is reached
         for (int currentStart = startIndex; currentStart < startIndex + gapLimit; currentStart += batchSize) {
-            final int end = Math.min(currentStart + batchSize, startIndex + gapLimit);
+            int currentEnd = Math.min(currentStart + batchSize, startIndex + gapLimit);
 
-            // 1. Bulk derivation and hashing
-            final var batch = IntStream.range(currentStart, end)
-                    .mapToObj(i -> {
-                        var derived = BIP84Deriver.deriveAddress(masterKey, i);
-                        var hash = BIP84Deriver.generateHash(derived.address(), effectiveSalt);
-                        return new AddressData(i, derived, hash);
-                    }).toList();
+            // Step 1: Generate batch data
+            List<AddressData> batch = deriveBatch(masterKey, currentStart, currentEnd, effectiveSalt);
 
-            // 2. Multi-status cache lookup (minimizes I/O overhead)
-            final var cachedStatuses = cacheManager.getMultiStatus(batch.stream().map(AddressData::hash).toList());
+            // Step 2: Check cache and attempt early exit
+            Optional<NextAddressResult> cachedResult = checkCacheAndVerify(batch, effectiveSalt);
+            if (cachedResult.isPresent()) return cachedResult.get();
 
-            // 3. Early exit if an unused address is found in cache (Pattern Matching logic)
-            final var foundInCache = batch.stream()
-                    .filter(item -> cachedStatuses.get(item.hash()) instanceof Boolean used && !used)
-                    .findFirst();
-
-            if (foundInCache.isPresent()) {
-                var item = foundInCache.get();
-                return buildResult(item.derived(), item.index(), effectiveSalt, item.hash());
-            }
-
-            // 4. Identify unknown addresses for Blockchain Scanning
-            var toScan = batch.stream()
-                    .filter(item -> !cachedStatuses.containsKey(item.hash()))
-                    .toList();
-
-            if (!toScan.isEmpty()) {
-                // Perform external network call for the unknown batch
-                var scanResults = blockchainChecker.checkAddressesBatch(toScan.stream().map(d -> d.derived().address()).toList());
-
-                // Bulk update the local cache with fresh results
-                var newEntries = new HashMap<String, Boolean>();
-                toScan.forEach(item -> {
-                    if (scanResults.get(item.derived().address()) instanceof Boolean used) {
-                        newEntries.put(item.hash(), used);
-                    }
-                });
-                cacheManager.addEntries(newEntries);
-
-                // Return the first confirmed unused address from the fresh scan
-                for (var item : toScan) {
-                    if (scanResults.get(item.derived().address()) instanceof Boolean used && !used) {
-                        return buildResult(item.derived(), item.index(), effectiveSalt, item.hash());
-                    }
-                }
-            }
+            // Step 3: Scan unknown addresses on blockchain
+            Optional<NextAddressResult> scannedResult = scanAndProcessUnknowns(batch, effectiveSalt);
+            if (scannedResult.isPresent()) return scannedResult.get();
         }
 
         throw new RuntimeException("Gap limit reached: No unused address found within " + gapLimit + " indices.");
     }
 
+    // --- Private Helper Methods ---
+
+    private String getEffectiveSalt(String xpub, String salt) {
+        return (salt == null || salt.isBlank()) ? BIP84Deriver.generateSaltFromXpub(xpub) : salt;
+    }
+
     /**
-     * Constructs the final response object including the QR code.
+     * Derives a batch of addresses and calculates their internal hashes.
      */
-    private NextAddressResult buildResult(BIP84Deriver.DerivedAddress derived, int index, String salt, String hash) {
+    private List<AddressData> deriveBatch(DeterministicKey masterKey, int start, int end, String salt) {
+        List<AddressData> batch = new ArrayList<>(end - start);
+        for (int i = start; i < end; i++) {
+            var derived = BIP84Deriver.deriveAddress(masterKey, i);
+            var hash = BIP84Deriver.generateHash(derived.address(), salt);
+            batch.add(new AddressData(i, derived, hash));
+        }
+        return batch;
+    }
+
+    /**
+     * Filters batch for addresses present in cache and performs a live double-check.
+     */
+    private Optional<NextAddressResult> checkCacheAndVerify(List<AddressData> batch, String salt) {
+        List<String> hashes = batch.stream().map(AddressData::hash).toList();
+        Map<String, Boolean> cachedStatuses = cacheManager.getMultiStatus(hashes);
+
+        return batch.stream()
+                .filter(item -> cachedStatuses.getOrDefault(item.hash(), true) == false)
+                .findFirst()
+                .flatMap(item -> {
+                    if (isStillUnusedOnChain(item.derived().address())) {
+                        return Optional.of(buildResult(item, salt));
+                    } else {
+                        cacheManager.addEntries(Map.of(item.hash(), true));
+                        return Optional.empty();
+                    }
+                });
+    }
+
+    /**
+     * Identifies unknown addresses, scans them, updates cache, and returns the first unused one.
+     */
+    private Optional<NextAddressResult> scanAndProcessUnknowns(List<AddressData> batch, String salt) {
+        List<String> hashes = batch.stream().map(AddressData::hash).toList();
+        Map<String, Boolean> cachedStatuses = cacheManager.getMultiStatus(hashes);
+
+        List<AddressData> toScan = batch.stream()
+                .filter(item -> !cachedStatuses.containsKey(item.hash()))
+                .toList();
+
+        if (toScan.isEmpty()) return Optional.empty();
+
+        Map<String, Boolean> scanResults = blockchainChecker.checkAddressesBatch(
+                toScan.stream().map(d -> d.derived().address()).toList()
+        );
+
+        // Update cache with all results from this scan
+        Map<String, Boolean> newEntries = new HashMap<>();
+        toScan.forEach(item -> {
+            Boolean used = scanResults.get(item.derived().address());
+            if (used != null) newEntries.put(item.hash(), used);
+        });
+        cacheManager.addEntries(newEntries);
+
+        // Return the first one found as unused during the scan
+        return toScan.stream()
+                .filter(item -> scanResults.getOrDefault(item.derived().address(), true) == false)
+                .findFirst()
+                .map(item -> buildResult(item, salt));
+    }
+
+    private boolean isStillUnusedOnChain(String address) {
+        return blockchainChecker.checkAddressesBatch(Collections.singletonList(address))
+                .getOrDefault(address, true) == false;
+    }
+
+    private NextAddressResult buildResult(AddressData data, String salt) {
         return new NextAddressResult(
-                derived.address(),
-                derived.publicKey(),
-                index,
-                generateQrCodeSvgBase64("bitcoin:" + derived.address()),
+                data.derived().address(),
+                data.derived().publicKey(),
+                data.index(),
+                generateQrCodeSvgBase64("bitcoin:" + data.derived().address()),
                 salt,
-                hash
+                data.hash()
         );
     }
 
     /**
-     * Generates a lightweight SVG QR code as a Base64 string.
+     * Generates a QR code with horizontal path merging to reduce SVG size.
      */
     private String generateQrCodeSvgBase64(String text) {
         try {
-            var matrix = new QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, 200, 200);
-            var sb = new StringBuilder();
+            BitMatrix matrix = new QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, 200, 200);
+            StringBuilder sb = new StringBuilder(4000);
 
-            // Building a high-performance, crisp SVG using path drawing
             sb.append("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 200 200\" shape-rendering=\"crispEdges\">")
                     .append("<rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>")
                     .append("<path fill=\"#000000\" d=\"");
 
             for (int y = 0; y < matrix.getHeight(); y++) {
                 for (int x = 0; x < matrix.getWidth(); x++) {
-                    if (matrix.get(x, y)) sb.append("M").append(x).append(" ").append(y).append("h1v1h-1z ");
+                    if (matrix.get(x, y)) {
+                        int width = 1;
+                        while (x + width < matrix.getWidth() && matrix.get(x + width, y)) width++;
+                        sb.append("M").append(x).append(" ").append(y).append("h").append(width).append("v1h-").append(width).append("z ");
+                        x += (width - 1);
+                    }
                 }
             }
             sb.append("\"/></svg>");
 
             return "data:image/svg+xml;base64," + Base64.getEncoder().encodeToString(sb.toString().getBytes(StandardCharsets.UTF_8));
-        } catch (WriterException _) { // Java 21+ Unnamed variable syntax
+        } catch (WriterException _) {
             return "";
         }
     }

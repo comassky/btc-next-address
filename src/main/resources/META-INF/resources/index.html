@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>BTC BIP84 - Secure Receive</title>
-    
+
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%23f7931a'/%3E%3Cpath d='M22.292 14.56c.273-1.815-1.11-2.79-3-3.44l.613-2.46-1.5-.374-.6 2.4c-.39-.1-.79-.19-1.18-.28l.6-2.41-1.5-.37-.614 2.46c-.33-.07-.64-.15-.95-.22l.002-.01-2.07-.516-.4 1.6s1.114.256 1.09.272c.608.15.72.55.7.87l-.7 2.81c.04.01.1.03.15.05l-.15-.04-.98 3.93c-.07.18-.26.46-.69.35l.02.02-1.11-.27-.43 1.72 1.95.48c.36.09.72.18 1.07.27l-.62 2.51 1.5.37.62-2.48c.41.11.8.21 1.19.31l-.61 2.44 1.5.37.62-2.49c2.56.48 4.49.29 5.3-2.02.65-1.86-.03-2.93-1.37-3.62.97-.23 1.71-.87 1.91-2.19zm-3.41 4.77c-.46 1.86-3.6 0.86-4.62.6l.82-3.3c1.02.25 4.27.75 3.8 2.7zm.47-4.79c-.42 1.7-3.03.83-3.88.62l.75-3c.85.21 3.57.6 3.13 2.38z' fill='white'/%3E%3C/svg%3E">
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
@@ -14,220 +16,220 @@
             theme: {
                 extend: {
                     colors: { btc: '#f7931a', dark: '#0b0e11', card: '#16191f', border: '#262a33' },
-                    animation: {
-                        'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                        'spring': 'spring 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.2) forwards'
-                    },
-                    keyframes: {
-                        spring: {
-                            '0%': { transform: 'translateY(10px) scale(0.95)', opacity: '0' },
-                            '100%': { transform: 'translateY(0) scale(1)', opacity: '1' }
-                        }
-                    }
+                    animation: { 'spring': 'spring 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.2) forwards' },
+                    keyframes: { spring: { '0%': { transform: 'translateY(8px)', opacity: '0' }, '100%': { transform: 'translateY(0)', opacity: '1' } } }
                 }
             }
         }
     </script>
     <style>
         body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
-        .mono { font-family: 'JetBrains Mono', monospace; }
-        #qr-target svg, #qr-target img { width: 100%; height: 100%; border-radius: 1.5rem; }
+        .mono { font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; }
+        #qr-target svg, #qr-target img { width: 100%; height: 100%; border-radius: 1rem; }
         .skeleton { background: linear-gradient(90deg, #1c2128 25%, #2d333b 50%, #1c2128 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
         @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-        .address-break { word-break: break-all; }
+        /* Fixation rigide de la hauteur pour éviter le Layout Shift */
+        .address-container-fixed { height: 160px; }
     </style>
 </head>
 
 <body class="bg-dark text-white min-h-screen flex items-center justify-center p-4">
 
-    <div class="w-full max-w-2xl bg-card rounded-[2.5rem] p-8 sm:p-12 border border-border shadow-2xl relative">
-        
-        <div class="flex items-center justify-between mb-10">
-            <div class="flex items-center gap-4">
-                <div class="w-12 h-12 bg-btc rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(247,147,26,0.3)]">
-                    <i data-lucide="bitcoin" class="text-white w-7 h-7"></i>
-                </div>
-                <div>
-                    <h1 class="text-xl font-bold tracking-tight">Receive Bitcoin</h1>
-                    <span class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Mainnet • Native SegWit (BIP84)</span>
-                </div>
+<div class="w-full max-w-3xl bg-card rounded-[2.5rem] p-8 sm:p-12 border border-border shadow-2xl">
+    <header class="flex items-center justify-between mb-10">
+        <div class="flex items-center gap-5">
+            <div class="w-14 h-14 bg-btc rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(247,147,26,0.2)]">
+                <i data-lucide="bitcoin" class="text-white w-8 h-8"></i>
             </div>
-            <button onclick="fetchAddress()" id="refresh-btn" class="p-3 hover:bg-white/5 rounded-xl transition-all text-gray-400 group">
-                <i data-lucide="refresh-cw" class="w-6 h-6 group-active:rotate-180 transition-transform duration-500"></i>
-            </button>
+            <div>
+                <h1 class="text-2xl font-bold tracking-tight text-white">Receive Bitcoin</h1>
+                <p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Mainnet • BIP84 Native SegWit</p>
+            </div>
         </div>
+        <button type="button" onclick="fetchAddress()" id="refresh-btn" class="p-3 hover:bg-white/5 rounded-xl transition-all text-gray-400 group" title="Get Next Address">
+            <i data-lucide="refresh-cw" class="w-6 h-6 group-active:rotate-180 transition-transform duration-500"></i>
+        </button>
+    </header>
 
+    <main>
         <div id="loader" class="space-y-8">
-            <div class="flex flex-col md:flex-row gap-8 items-center">
+            <div class="flex flex-col lg:flex-row gap-10 items-center">
                 <div class="w-64 h-64 skeleton rounded-[2rem] flex-shrink-0"></div>
-                <div class="w-full space-y-4">
+                <div class="w-full space-y-5">
                     <div class="h-6 skeleton rounded-lg w-1/3"></div>
-                    <div class="h-16 skeleton rounded-2xl w-full"></div>
+                    <div class="address-container-fixed skeleton rounded-2xl w-full"></div>
                 </div>
             </div>
         </div>
 
         <div id="main-content" class="hidden animate-spring">
-            <div class="flex flex-col md:flex-row gap-10 items-center">
-                
-                <div class="bg-white p-5 rounded-[2.5rem] aspect-square w-64 h-64 shadow-inner flex-shrink-0">
-                    <div id="qr-target" class="w-full h-full"></div>
+            <div class="flex flex-col lg:flex-row gap-12 items-center">
+                <div class="bg-white p-5 rounded-[2rem] aspect-square w-64 h-64 shadow-inner flex-shrink-0">
+                    <div id="qr-target" class="w-full h-full flex items-center justify-center"></div>
                 </div>
 
                 <div class="w-full space-y-6">
                     <div class="flex justify-between items-end px-1">
-                        <span class="text-[11px] text-gray-500 font-bold uppercase tracking-widest">Your Deposit Address</span>
-                        <span class="text-[11px] text-btc font-bold px-3 py-1 bg-btc/10 rounded-full">Index #<span id="idx">0</span></span>
+                        <span class="text-[11px] text-gray-500 font-bold uppercase tracking-widest">Address Details</span>
+                        <span class="text-[11px] text-btc font-bold px-3 py-1 bg-btc/10 rounded-full border border-btc/20">Index #<span id="idx">0</span></span>
                     </div>
 
-                    <button onclick="copyAddress()" class="w-full bg-black/40 border border-border hover:border-btc/50 rounded-2xl p-5 flex items-start justify-between group transition-all active:scale-[0.98]">
-                        <span id="addr-text" class="mono text-sm sm:text-base text-gray-200 address-break text-left leading-relaxed tracking-wider">bc1q...</span>
-                        <i data-lucide="copy" class="w-5 h-5 text-gray-500 group-hover:text-btc transition-colors mt-1 ml-4 flex-shrink-0"></i>
-                    </button>
-                    
-                    <p class="text-[10px] text-gray-600 text-center md:text-left px-1">
-                        Only send Bitcoin (BTC) to this address. Sending other assets may result in permanent loss.
+                    <div class="address-container-fixed flex items-stretch">
+                        <div class="flex-1 bg-black/30 border border-border rounded-2xl p-6 flex flex-col justify-center relative group overflow-hidden">
+                            <div id="addr-text" class="mono text-base sm:text-lg text-gray-200 break-all leading-relaxed tracking-wider w-full pr-12">
+                            </div>
+
+                            <div class="absolute right-2 top-0 bottom-0 flex flex-col justify-center gap-2 border-l border-white/5 pl-2 my-6">
+                                <button type="button" onclick="copyAddress()" class="p-2.5 text-gray-400 hover:text-btc transition-colors rounded-xl hover:bg-white/5" title="Copy">
+                                    <i data-lucide="copy" class="w-5 h-5"></i>
+                                </button>
+                                <button type="button" onclick="toggleFormat()" class="p-2.5 text-gray-400 hover:text-btc transition-colors rounded-xl hover:bg-white/5" title="Toggle Format">
+                                    <i id="format-icon" data-lucide="eye" class="w-5 h-5"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <p class="text-[11px] text-gray-600 px-1 leading-relaxed">
+                        Verify <span class="text-btc">bc1q</span> and the <span class="text-btc">last 6 chars</span>.
+                        Compatible only with <span class="text-gray-300 font-semibold">Bitcoin (BTC)</span>.
                     </p>
                 </div>
             </div>
         </div>
+    </main>
 
-        <div class="mt-12 pt-10 border-t border-border/50">
-            <div class="flex flex-col gap-4">
-                <label class="text-[11px] text-gray-500 font-bold uppercase tracking-widest px-1">Ownership Verifier</label>
-                <div class="relative group" id="verify-field">
-                    <input type="text" id="verify-input" placeholder="Paste address to verify against your wallet..." 
-                        class="w-full bg-black/40 border border-border rounded-2xl py-5 pl-6 pr-28 text-sm mono outline-none focus:border-btc/50 transition-all">
-                    <button onclick="verifyAddress()" id="verify-btn" 
-                        class="absolute right-3 top-3 bottom-3 bg-btc text-dark px-5 rounded-xl text-xs font-black uppercase tracking-tighter hover:bg-white transition-all shadow-lg">
-                        Verify
-                    </button>
-                </div>
-            </div>
-            <div id="verify-result" class="hidden mt-6 animate-spring">
-                <div id="verify-badge" class="flex items-center gap-3 px-6 py-4 rounded-2xl border text-xs font-bold uppercase tracking-tight"></div>
-            </div>
+    <section class="mt-14 pt-10 border-t border-border/50">
+        <label for="verify-input" class="block text-[11px] text-gray-500 font-bold uppercase tracking-widest mb-5 px-1">Ownership Verifier</label>
+        <div class="relative">
+            <input type="text" id="verify-input" placeholder="Paste address to verify..."
+                   class="w-full bg-black/30 border border-border rounded-2xl py-5 pl-7 pr-36 text-sm mono outline-none focus:border-btc/40 transition-all text-gray-300">
+            <button type="button" onclick="verifyAddress()" id="verify-btn"
+                    class="absolute right-2 top-2 bottom-2 bg-btc text-dark px-6 rounded-xl text-[11px] font-black uppercase hover:brightness-110 active:scale-95 transition-all">
+                Verify
+            </button>
         </div>
+        <div id="verify-result" class="hidden mt-6 animate-spring">
+            <div id="verify-badge" class="flex items-center gap-3 px-6 py-4 rounded-2xl border text-xs font-bold uppercase"></div>
+        </div>
+    </section>
 
-        <div id="toast" class="fixed bottom-12 left-1/2 -translate-x-1/2 bg-btc text-dark font-black text-sm px-8 py-4 rounded-2xl shadow-[0_20px_50px_rgba(247,147,26,0.3)] opacity-0 pointer-events-none transition-all duration-300 z-50">
-            ADDRESS COPIED TO CLIPBOARD
-        </div>
+    <div id="toast" class="fixed bottom-10 left-1/2 -translate-x-1/2 bg-white text-dark font-bold text-[11px] px-8 py-4 rounded-2xl shadow-2xl opacity-0 pointer-events-none transition-all duration-300 z-50 uppercase tracking-widest">
+        Copied to clipboard
     </div>
+</div>
 
-    <script>
-        // Helper to grab elements at runtime (prevents 'null' errors)
-        const getUI = () => ({
-            loader: document.getElementById('loader'),
-            content: document.getElementById('main-content'),
-            addr: document.getElementById('addr-text'),
-            index: document.getElementById('idx'),
-            qr: document.getElementById('qr-target'),
-            refreshBtn: document.getElementById('refresh-btn'),
-            verifyBtn: document.getElementById('verify-btn'),
-            verifyInput: document.getElementById('verify-input'),
-            toast: document.getElementById('toast'),
-            field: document.getElementById('verify-field'),
-            verifyResult: document.getElementById('verify-result'),
-            verifyBadge: document.getElementById('verify-badge')
-        });
+<script>
+    const CONFIG = { PREFIX: "bc1q", SUFFIX_LEN: 6 };
+    let state = { address: "", currentIndex: 0, isFetching: false, isChunked: true };
 
-        let currentAddress = "";
-        let isFetching = false;
+    const UI = {
+        loader: document.getElementById('loader'),
+        content: document.getElementById('main-content'),
+        addr: document.getElementById('addr-text'),
+        idx: document.getElementById('idx'),
+        qr: document.getElementById('qr-target'),
+        refreshIcon: document.querySelector('#refresh-btn i'),
+        verifyBtn: document.getElementById('verify-btn'),
+        verifyInput: document.getElementById('verify-input'),
+        toast: document.getElementById('toast'),
+        verifyResult: document.getElementById('verify-result'),
+        verifyBadge: document.getElementById('verify-badge'),
+        formatIcon: document.getElementById('format-icon')
+    };
 
-        async function fetchAddress() {
-            const ui = getUI();
-            if (isFetching || !ui.loader || !ui.content) return;
-            
-            isFetching = true;
-            ui.content.classList.add('hidden');
-            ui.loader.classList.remove('hidden');
-            ui.refreshBtn?.querySelector('i')?.classList.add('animate-spin');
+    function getFormattedAddress(addr, chunked) {
+        if (!addr) return "";
+        const body = addr.startsWith(CONFIG.PREFIX) ? addr.substring(CONFIG.PREFIX.length) : addr;
+        const lastPart = body.slice(-CONFIG.SUFFIX_LEN);
+        const middle = body.slice(0, -CONFIG.SUFFIX_LEN);
+        const highlight = (txt) => `<span class="text-btc font-bold">${txt}</span>`;
 
-            try {
-                const res = await fetch('/api/address/next', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ startIndex: 0 })
-                });
-                
-                if (!res.ok) throw new Error("HTTP " + res.status);
-                const data = await res.json();
-                
-                currentAddress = data.address;
-                ui.addr.innerText = data.address;
-                ui.index.innerText = data.index;
-                
-                if (data.qrCodeImage.startsWith('data:')) {
-                    ui.qr.innerHTML = `<img src="${data.qrCodeImage}" alt="QR" class="w-full h-full">`;
-                } else {
-                    ui.qr.innerHTML = data.qrCodeImage;
-                }
-
-                ui.loader.classList.add('hidden');
-                ui.content.classList.remove('hidden');
-            } catch (err) {
-                console.error("Fetch failed:", err);
-                alert("Server Connection Error");
-            } finally {
-                isFetching = false;
-                ui.refreshBtn?.querySelector('i')?.classList.remove('animate-spin');
-            }
+        if (chunked) {
+            const chunks = middle.match(/.{1,4}/g) || [];
+            return `${highlight(CONFIG.PREFIX)} ${chunks.join(" ")} ${highlight(lastPart)}`;
         }
+        return `${highlight(CONFIG.PREFIX)}${middle}${highlight(lastPart)}`;
+    }
 
-        async function verifyAddress() {
-            const ui = getUI();
-            const addr = ui.verifyInput?.value.trim();
-            if (!addr || isFetching) return;
+    function toggleFormat() {
+        state.isChunked = !state.isChunked;
+        UI.formatIcon.setAttribute('data-lucide', state.isChunked ? 'eye' : 'eye-off');
+        lucide.createIcons();
+        UI.addr.innerHTML = getFormattedAddress(state.address, state.isChunked);
+    }
 
-            ui.verifyBtn.innerText = "...";
-            
-            try {
-                const res = await fetch('/api/address/verify', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ address: addr })
-                });
-                const data = await res.json();
-                showVerificationResult(data);
-            } catch (e) {
-                console.error("Verification error:", e);
-            } finally {
-                ui.verifyBtn.innerText = "Verify";
-            }
+    async function fetchAddress() {
+        if (state.isFetching) return;
+        state.isFetching = true;
+        UI.content.classList.add('hidden');
+        UI.loader.classList.remove('hidden');
+        UI.refreshIcon.classList.add('animate-spin');
+
+        try {
+            const response = await fetch('/api/address/next', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ startIndex: state.currentIndex })
+            });
+            const data = await response.json();
+
+            state.address = data.address;
+            state.currentIndex = data.index;
+
+            UI.idx.textContent = state.currentIndex;
+            UI.addr.innerHTML = getFormattedAddress(state.address, state.isChunked);
+
+            UI.qr.innerHTML = data.qrCodeImage.startsWith('data:')
+                ? `<img src="${data.qrCodeImage}" class="animate-spring" alt="QR">`
+                : data.qrCodeImage;
+
+            UI.loader.classList.add('hidden');
+            UI.content.classList.remove('hidden');
+        } catch (err) {
+            UI.addr.innerHTML = `<span class="text-red-500 text-sm italic">Network Error</span>`;
+            UI.loader.classList.add('hidden');
+            UI.content.classList.remove('hidden');
+        } finally {
+            state.isFetching = false;
+            UI.refreshIcon.classList.remove('animate-spin');
         }
+    }
 
-        function showVerificationResult(data) {
-            const ui = getUI();
-            ui.verifyResult.classList.remove('hidden');
-            
+    async function verifyAddress() {
+        const val = UI.verifyInput.value.trim();
+        if (!val) return;
+        UI.verifyBtn.textContent = "...";
+        try {
+            const res = await fetch('/api/address/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ address: val })
+            });
+            const data = await res.json();
+            UI.verifyResult.classList.remove('hidden');
             if (data.valid) {
-                ui.field.style.borderColor = "#22c55e";
-                ui.verifyBadge.className = "flex items-center gap-3 px-6 py-4 rounded-2xl border border-green-500/20 bg-green-500/10 text-green-500 text-xs font-bold uppercase";
-                ui.verifyBadge.innerHTML = `<i data-lucide="shield-check" class="w-5 h-5"></i> Ownership Verified (Index #${data.index})`;
+                UI.verifyBadge.className = "flex items-center gap-3 px-6 py-4 rounded-2xl border border-green-500/20 bg-green-500/5 text-green-500 text-xs font-bold uppercase";
+                UI.verifyBadge.innerHTML = `<i data-lucide="shield-check" class="w-4 h-4"></i> Verified (#${data.index})`;
             } else {
-                ui.field.style.borderColor = "#ef4444";
-                ui.verifyBadge.className = "flex items-center gap-3 px-6 py-4 rounded-2xl border border-red-500/20 bg-red-500/10 text-red-500 text-xs font-bold uppercase";
-                ui.verifyBadge.innerHTML = `<i data-lucide="shield-alert" class="w-5 h-5"></i> Address not in this wallet`;
+                UI.verifyBadge.className = "flex items-center gap-3 px-6 py-4 rounded-2xl border border-red-500/20 bg-red-500/5 text-red-500 text-xs font-bold uppercase";
+                UI.verifyBadge.innerHTML = `<i data-lucide="shield-alert" class="w-4 h-4"></i> Not Found`;
             }
-            if (window.lucide) lucide.createIcons();
-        }
+            lucide.createIcons();
+        } catch (e) { console.error(e); } finally { UI.verifyBtn.textContent = "Verify"; }
+    }
 
-        function copyAddress() {
-            if (!currentAddress) return;
-            const ui = getUI();
-            navigator.clipboard.writeText(currentAddress);
-            ui.toast.classList.replace('opacity-0', 'opacity-100');
-            ui.toast.classList.add('-translate-y-6');
-            setTimeout(() => {
-                ui.toast.classList.replace('opacity-100', 'opacity-0');
-                ui.toast.classList.remove('-translate-y-6');
-            }, 2000);
-        }
+    function copyAddress() {
+        if (!state.address) return;
+        navigator.clipboard.writeText(state.address);
+        UI.toast.classList.replace('opacity-0', 'opacity-100');
+        setTimeout(() => UI.toast.classList.replace('opacity-100', 'opacity-0'), 2000);
+    }
 
-        document.addEventListener('DOMContentLoaded', () => {
-            if (window.lucide) lucide.createIcons();
-            fetchAddress();
-        });
-    </script>
+    document.addEventListener('DOMContentLoaded', () => {
+        lucide.createIcons();
+        fetchAddress();
+    });
+</script>
 </body>
 </html>
