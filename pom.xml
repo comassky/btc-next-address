@@ -110,8 +110,6 @@
             <properties>
                 <skipITs>false</skipITs>
                 <quarkus.package.type>native</quarkus.package.type>
-                <quarkus.native.additional-build-args>
-                    -H:+AddAllCharsets;-Dfile.encoding=UTF-8;--strip-debug;-O3;--no-fallback</quarkus.native.additional-build-args>
             </properties>
         </profile>
     </profiles>
