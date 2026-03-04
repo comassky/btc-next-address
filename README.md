@@ -33,7 +33,7 @@ The configuration file is located at `src/main/resources/application.properties`
 
 Example of setting the xpub via an environment variable:
 ```bash
-export BITCOIN_XPUB="xpub6CgocZ..."
+export BITCOIN_XPUB="xpub7ogocZ..."
 ```
 
 ## Running the Application
