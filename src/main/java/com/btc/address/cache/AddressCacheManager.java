@@ -56,7 +56,7 @@ public class AddressCacheManager {
         } catch (IOException e) {
             System.err.println("❌ Erreur de sauvegarde: " + e.getMessage());
         } finally {
-            if (temp != null) try { Files.deleteIfExists(temp); } catch (IOException _) {}
+            if (temp != null) try { Files.deleteIfExists(temp); } catch (IOException ignored) {}
         }
     }
 

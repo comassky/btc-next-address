@@ -17,7 +17,7 @@ The application provides a simple web interface to display the address and its Q
 
 ## Tech Stack
 
-- **Backend**: Java 25 (LTS), Quarkus
+- **Backend**: Java 21 (LTS), Quarkus
 - **QR Code Generation**: ZXing (Zebra Crossing)
 - **Bitcoin**: BitcoinJ
 - **Build**: Maven, GraalVM

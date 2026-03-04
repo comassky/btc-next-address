@@ -8,6 +8,7 @@ import com.btc.address.resource.AddressData;
 import com.btc.address.bitcoin.BIP84Deriver;
 import com.btc.address.blockchain.BlockchainChecker;
 import com.btc.address.cache.AddressCacheManager;
+import com.btc.address.cache.CacheEntry;
 import com.btc.address.resource.NextAddressResult;
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.WriterException;
@@ -197,7 +198,7 @@ public class AddressService {
             sb.append("\"/></svg>");
 
             return "data:image/svg+xml;base64," + Base64.getEncoder().encodeToString(sb.toString().getBytes(StandardCharsets.UTF_8));
-        } catch (WriterException _) {
+        } catch (WriterException ignored) {
             return "";
         }
     }
