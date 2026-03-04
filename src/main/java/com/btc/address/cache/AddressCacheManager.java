@@ -10,6 +10,8 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.io.IOException;
 import java.nio.file.*;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -58,18 +60,22 @@ public class AddressCacheManager {
         }
     }
 
-    public Map<String, Boolean> getMultiStatus(Iterable<String> hashes) {
+    public Map<String, CacheEntry> getMultiEntries(Iterable<String> hashes) {
         return StreamSupport.stream(hashes.spliterator(), false)
                 .filter(cache::containsKey)
-                .collect(Collectors.toMap(h -> h, h -> cache.get(h).used(), (old, _) -> old));
+                .collect(Collectors.toMap(h -> h, h -> cache.get(h)));
     }
 
-    public void addEntries(Map<String, Boolean> newEntries) {
-        newEntries.forEach((h, u) -> cache.put(h, new CacheEntry(u)));
+    public void addEntries(Map<String, Boolean> newEntries, Map<String, Integer> indices) {
+        newEntries.forEach((h, u) -> cache.put(h, new CacheEntry(u, indices.getOrDefault(h, -1))));
         saveCache();
     }
 
-    public void addEntry(String hash, boolean used) {
-        cache.put(hash, new CacheEntry(used));
+    public int getMaxUsedIndex() {
+        return cache.values().stream()
+                .filter(CacheEntry::used)
+                .mapToInt(CacheEntry::index)
+                .max()
+                .orElse(-1);
     }
 }

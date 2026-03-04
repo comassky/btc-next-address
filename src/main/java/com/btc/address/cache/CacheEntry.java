@@ -8,8 +8,9 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
 @RegisterForReflection
 public record CacheEntry(
         boolean used,
+        int index,
         Instant timestamp) {
-    public CacheEntry(boolean used) {
-        this(used, Instant.now());
+    public CacheEntry(boolean used, int index) {
+        this(used, index, Instant.now());
     }
 }

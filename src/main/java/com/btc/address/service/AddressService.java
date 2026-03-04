@@ -58,10 +58,12 @@ public class AddressService {
     public NextAddressResult findNextUnusedAddress(String xpub, int startIndex, String salt) {
         final String effectiveSalt = getEffectiveSalt(xpub, salt);
         final var masterKey = BIP84Deriver.createMasterKey(xpub);
-        final int batchSize = 20;
+        final int batchSize = 50;
+        final int maxUsedIndex = cacheManager.getMaxUsedIndex();
+        final int effectiveStart = Math.max(startIndex, maxUsedIndex + 1);
 
-        for (int currentStart = startIndex; currentStart < startIndex + gapLimit; currentStart += batchSize) {
-            int currentEnd = Math.min(currentStart + batchSize, startIndex + gapLimit);
+        for (int currentStart = effectiveStart; currentStart < effectiveStart + gapLimit; currentStart += batchSize) {
+            int currentEnd = Math.min(currentStart + batchSize, effectiveStart + gapLimit);
 
             // Step 1: Generate batch data
             List<AddressData> batch = deriveBatch(masterKey, currentStart, currentEnd, effectiveSalt);
@@ -88,13 +90,14 @@ public class AddressService {
      * Derives a batch of addresses and calculates their internal hashes.
      */
     private List<AddressData> deriveBatch(DeterministicKey masterKey, int start, int end, String salt) {
-        List<AddressData> batch = new ArrayList<>(end - start);
-        for (int i = start; i < end; i++) {
-            var derived = BIP84Deriver.deriveAddress(masterKey, i);
-            var hash = BIP84Deriver.generateHash(derived.address(), salt);
-            batch.add(new AddressData(i, derived, hash));
-        }
-        return batch;
+        return IntStream.range(start, end).parallel()
+                .mapToObj(i -> {
+                    var derived = BIP84Deriver.deriveAddress(masterKey, i);
+                    var hash = BIP84Deriver.generateHash(derived.address(), salt);
+                    return new AddressData(i, derived, hash);
+                })
+                .sorted(Comparator.comparingInt(AddressData::index))
+                .toList();
     }
 
     /**
@@ -102,16 +105,16 @@ public class AddressService {
      */
     private Optional<NextAddressResult> checkCacheAndVerify(List<AddressData> batch, String salt) {
         List<String> hashes = batch.stream().map(AddressData::hash).toList();
-        Map<String, Boolean> cachedStatuses = cacheManager.getMultiStatus(hashes);
+        Map<String, CacheEntry> cachedEntries = cacheManager.getMultiEntries(hashes);
 
         return batch.stream()
-                .filter(item -> cachedStatuses.getOrDefault(item.hash(), true) == false)
+                .filter(item -> cachedEntries.containsKey(item.hash()) && !cachedEntries.get(item.hash()).used())
                 .findFirst()
                 .flatMap(item -> {
                     if (isStillUnusedOnChain(item.derived().address())) {
                         return Optional.of(buildResult(item, salt));
                     } else {
-                        cacheManager.addEntries(Map.of(item.hash(), true));
+                        cacheManager.addEntries(Map.of(item.hash(), true), Map.of(item.hash(), item.index()));
                         return Optional.empty();
                     }
                 });
@@ -122,10 +125,10 @@ public class AddressService {
      */
     private Optional<NextAddressResult> scanAndProcessUnknowns(List<AddressData> batch, String salt) {
         List<String> hashes = batch.stream().map(AddressData::hash).toList();
-        Map<String, Boolean> cachedStatuses = cacheManager.getMultiStatus(hashes);
+        Map<String, CacheEntry> cachedEntries = cacheManager.getMultiEntries(hashes);
 
         List<AddressData> toScan = batch.stream()
-                .filter(item -> !cachedStatuses.containsKey(item.hash()))
+                .filter(item -> !cachedEntries.containsKey(item.hash()))
                 .toList();
 
         if (toScan.isEmpty()) return Optional.empty();
@@ -136,11 +139,15 @@ public class AddressService {
 
         // Update cache with all results from this scan
         Map<String, Boolean> newEntries = new HashMap<>();
+        Map<String, Integer> indices = new HashMap<>();
         toScan.forEach(item -> {
             Boolean used = scanResults.get(item.derived().address());
-            if (used != null) newEntries.put(item.hash(), used);
+            if (used != null) {
+                newEntries.put(item.hash(), used);
+                indices.put(item.hash(), item.index());
+            }
         });
-        cacheManager.addEntries(newEntries);
+        cacheManager.addEntries(newEntries, indices);
 
         // Return the first one found as unused during the scan
         return toScan.stream()
