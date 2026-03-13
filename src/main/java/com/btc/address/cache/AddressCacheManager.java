@@ -35,15 +35,20 @@ public class AddressCacheManager {
     @PostConstruct
     void init() {
         this.cachePath = Paths.get(dataPath, FILE_NAME);
+        reloadCache();
+    }
+
+    private synchronized void reloadCache() {
         try {
             Files.createDirectories(cachePath.getParent());
+            cache.clear();
             if (Files.exists(cachePath)) {
                 var type = mapper.getTypeFactory().constructMapType(Map.class, String.class, CacheEntry.class);
                 Map<String, CacheEntry> loaded = mapper.readValue(cachePath.toFile(), type);
                 if (loaded != null) cache.putAll(loaded);
             }
         } catch (IOException e) {
-            System.err.println("❌ Initialisation du cache échouée: " + e.getMessage());
+            System.err.println("❌ Rechargement du cache échouée: " + e.getMessage());
         }
     }
 
@@ -58,6 +63,10 @@ public class AddressCacheManager {
         } finally {
             if (temp != null) try { Files.deleteIfExists(temp); } catch (IOException ignored) {}
         }
+    }
+
+    public synchronized void refreshFromDisk() {
+        reloadCache();
     }
 
     public Map<String, CacheEntry> getMultiEntries(Iterable<String> hashes) {

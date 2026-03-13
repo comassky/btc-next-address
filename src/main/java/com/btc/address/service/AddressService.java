@@ -57,6 +57,9 @@ public class AddressService {
      * Main entry point to find the next available Bitcoin address.
      */
     public NextAddressResult findNextUnusedAddress(String xpub, int startIndex, String salt) {
+        // Reload cache from disk to ensure we have the latest changes
+        cacheManager.refreshFromDisk();
+        
         final String effectiveSalt = getEffectiveSalt(xpub, salt);
         final var masterKey = BIP84Deriver.createMasterKey(xpub);
         final int batchSize = 50;
